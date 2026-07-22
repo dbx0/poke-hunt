@@ -1,0 +1,11 @@
+{
+  "name": "poke-hunt-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension: best hunting routes for Poke Idle World",
+  "scripts": {
+    "test": "node test/engine.test.mjs",
+    "refresh": "node scripts/refresh-data.mjs",
+    "sprites": "node scripts/bundle-sprites.mjs"
+  }
+}

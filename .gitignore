@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Build artifacts
+*.zip
+*.xpi
+web-ext-artifacts/

@@ -1,0 +1,236 @@
+/* Gengar theme — black background, white text, purple highlights.
+   Lives inside the extension's Shadow DOM, isolated from the game. */
+:host { all: initial; }
+* { box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+.pr-backdrop {
+  position: fixed; inset: 0; z-index: 2147483000;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.pr-modal {
+  width: min(600px, 95vw); max-height: 88vh; overflow: hidden;
+  display: flex; flex-direction: column;
+  background: #000;
+  color: #ffffff;
+  border: 1px solid #2a2140;
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+}
+
+.pr-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px; border-bottom: 1px solid #7b3ff233;
+}
+.pr-logo { width: 26px; height: 26px; object-fit: contain; }
+.pr-title { flex: 1; display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 16px; letter-spacing: 0.4px; color: #ffffff; }
+.pr-ver { font-size: 11px; font-weight: 600; letter-spacing: 0; color: #6f6790; }
+.pr-ver::before { content: "- "; }
+.pr-close { all: unset; cursor: pointer; padding: 2px 9px; border-radius: 9px; color: #b9a7e6; font-size: 15px; }
+.pr-close:hover { background: #7b3ff233; color: #fff; }
+
+/* current-Pokemon hero card */
+.pr-hero {
+  display: flex; align-items: center; gap: 12px; margin: 12px 12px 4px;
+  padding: 10px 12px; border-radius: 12px;
+  background: #100c1c; border: 1px solid #241d38;
+}
+.pr-hero:empty { display: none; }
+.pr-hero-ico {
+  flex: 0 0 auto; width: 52px; height: 52px; display: flex; align-items: center; justify-content: center;
+  background: #000; border-radius: 10px; border: 1px solid #241d38;
+}
+.pr-hero-ico .pr-ico { width: 46px; height: 46px; }
+.pr-hero-body { flex: 1 1 auto; min-width: 0; }
+.pr-hero-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pr-hero-name { font-weight: 800; font-size: 16px; color: #fff; }
+.pr-hero-lv { font-weight: 700; font-size: 12px; color: #b98cff; }
+.pr-hero-types { display: flex; gap: 6px; margin-top: 5px; }
+.pr-type {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 6px; color: #cfc6e6; background: #ffffff0f; border: 1px solid #ffffff14;
+}
+/* per-type shades: tinted background + matching border, bright readable text */
+.pr-type-normal   { color: #d7dbe0; background: #9099a133; border-color: #9099a1aa; }
+.pr-type-fire     { color: #ffc39a; background: #ff9d5526; border-color: #ff9d55aa; }
+.pr-type-water    { color: #9fc4ef; background: #4d90d526; border-color: #4d90d5aa; }
+.pr-type-electric { color: #f6e28a; background: #f4d23c26; border-color: #f4d23caa; }
+.pr-type-grass    { color: #a3e39c; background: #63bc5a26; border-color: #63bc5aaa; }
+.pr-type-ice      { color: #b6ece4; background: #73cec026; border-color: #73cec0aa; }
+.pr-type-fighting { color: #ef9aad; background: #ce406926; border-color: #ce4069aa; }
+.pr-type-poison   { color: #d8b0ec; background: #ab6ac826; border-color: #ab6ac8aa; }
+.pr-type-ground   { color: #f0b48f; background: #d9784526; border-color: #d97845aa; }
+.pr-type-flying   { color: #c3d2f2; background: #8fa9de26; border-color: #8fa9deaa; }
+.pr-type-psychic  { color: #ffb0b3; background: #f9717626; border-color: #f97176aa; }
+.pr-type-bug      { color: #cbe388; background: #90c12c26; border-color: #90c12caa; }
+.pr-type-rock     { color: #ded1af; background: #c7b78b26; border-color: #c7b78baa; }
+.pr-type-ghost    { color: #a9b7ff; background: #5269ad33; border-color: #5269adcc; }
+.pr-type-dragon   { color: #86baef; background: #0b6dc326; border-color: #0b6dc3aa; }
+.pr-type-dark     { color: #b6b0c4; background: #59576133; border-color: #595761dd; }
+.pr-type-steel    { color: #a7cdda; background: #5a8ea126; border-color: #5a8ea1aa; }
+.pr-type-fairy    { color: #f6bdf1; background: #ec8fe626; border-color: #ec8fe6aa; }
+
+.pr-tabs {
+  display: flex; gap: 6px; padding: 12px 12px 0;
+  border-bottom: 1px solid #2a2140;
+}
+.pr-tab {
+  all: unset; cursor: pointer; flex: 1; text-align: center; position: relative;
+  padding: 10px; font-size: 13px; font-weight: 700; color: #9a90b8;
+  transition: color .18s ease;
+}
+.pr-tab:hover { color: #fff; }
+/* animated underline that slides under the active tab */
+.pr-tab::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px;
+  background: #a35bff; border-radius: 2px;
+  transform: scaleX(0); transform-origin: center;
+  transition: transform .22s cubic-bezier(.4, 0, .2, 1);
+}
+.pr-tab-on { color: #fff; }
+.pr-tab-on::after { transform: scaleX(1); }
+
+.pr-sub { padding: 11px 16px 4px; font-size: 13px; color: #ffffff; }
+.pr-sub b { color: #fff; }
+.pr-live { color: #b98cff; font-weight: 700; }
+.pr-est { color: #9a90b8; font-weight: 700; }
+
+.pr-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pr-badges:empty { display: none; }
+.pr-flag {
+  font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px;
+  color: #d7bcff; background: #7b3ff21f; border: 1px solid #a35bff77; white-space: nowrap; letter-spacing: 0.2px;
+}
+
+.pr-controls {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 8px 16px 12px; font-size: 12px; color: #c9bff0;
+  border-bottom: 1px solid #ffffff10;
+}
+.pr-chk { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: #c9bff0; font-weight: 600; }
+/* hide the native checkbox; drive a custom pill toggle instead */
+.pr-chk input { position: absolute; opacity: 0; width: 0; height: 0; }
+.pr-toggle {
+  position: relative; flex: 0 0 auto; width: 34px; height: 18px; border-radius: 999px;
+  background: #241f33; border: 1px solid #7b3ff255;
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.pr-toggle::before {
+  content: ""; position: absolute; top: 1px; left: 1px; width: 14px; height: 14px; border-radius: 50%;
+  background: #9a90b8; transition: transform .2s cubic-bezier(.4, 0, .2, 1), background .18s ease;
+}
+.pr-chk input:checked + .pr-toggle {
+  background: #7b3ff2; border-color: #a35bff;
+}
+.pr-chk input:checked + .pr-toggle::before { transform: translateX(16px); background: #fff; }
+.pr-chk input:focus-visible + .pr-toggle { outline: 2px solid #a35bff; outline-offset: 2px; }
+
+.pr-body {
+  overflow-y: auto; padding: 12px 12px 16px; display: flex; flex-direction: column; gap: 9px;
+  scrollbar-width: thin; scrollbar-color: #7b3ff2 transparent;
+}
+.pr-body::-webkit-scrollbar { width: 12px; }
+.pr-body::-webkit-scrollbar-track { background: transparent; margin: 6px 0; }
+.pr-body::-webkit-scrollbar-thumb {
+  background: #7b3ff2; border-radius: 999px; border: 3px solid #000; background-clip: padding-box;
+}
+.pr-body::-webkit-scrollbar-thumb:hover { background: #9b59f6; background-clip: padding-box; }
+.pr-empty { padding: 30px 16px; text-align: center; color: #9a90b8; font-size: 13px; }
+
+.pr-section {
+  margin: 12px 2px 2px; font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
+  text-transform: uppercase; color: #b98cff; display: flex; align-items: center; gap: 8px;
+}
+.pr-section::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, #7b3ff255, transparent); }
+
+@keyframes pr-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.pr-body > * { animation: pr-fade-in .2s ease both; }
+
+.pr-collapse {
+  all: unset; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  margin-top: 4px; padding: 9px 11px; border-radius: 11px;
+  font-size: 12px; font-weight: 800; letter-spacing: 0.3px; color: #b98cff;
+  border: 1px solid #7b3ff233; background: #7b3ff20d;
+}
+.pr-collapse:hover { background: #7b3ff21f; color: #d7bcff; border-color: #7b3ff255; }
+.pr-collapse-arrow { font-size: 10px; width: 10px; }
+.pr-collapse-n {
+  margin-left: auto; font-size: 11px; font-weight: 700; color: #8a829f;
+  background: #ffffff12; padding: 1px 8px; border-radius: 999px;
+}
+.pr-below { display: flex; flex-direction: column; gap: 9px; margin-top: 9px; }
+.pr-below.pr-collapsed { display: none; }
+
+.pr-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 14px;
+  background: #0b0b0d; border: 1px solid #ffffff14;
+  transition: border-color .12s;
+}
+.pr-card:hover { border-color: #7b3ff255; }
+.pr-card.pr-up { opacity: 0.72; }
+
+/* current best = purple highlight with a shiny sweeping border */
+.pr-here {
+  position: relative; background: #7b3ff21a; border-color: transparent;
+}
+.pr-here::before {
+  content: ""; position: absolute; inset: 0; border-radius: 14px; padding: 1px;
+  /* symmetric triangle wave: one soft highlight per 560px period, no flat gap,
+     so a single band is always sweeping; a shift of one period loops cleanly */
+  background: repeating-linear-gradient(100deg,
+    #5a2fb8 0px, #b98cff 140px, #ffffff 280px, #b98cff 420px, #5a2fb8 560px);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: pr-shine 3.4s linear infinite; pointer-events: none;
+}
+/* travel exactly one 560px period -> the end frame is identical to the start */
+@keyframes pr-shine { from { background-position: 0 0; } to { background-position: 560px 0; } }
+
+.pr-badge {
+  flex: 0 0 auto; min-width: 60px; text-align: center;
+  font-variant-numeric: tabular-nums; font-weight: 800; font-size: 12px;
+  color: #c9adff; white-space: nowrap;
+}
+.pr-here .pr-badge { color: #d7bcff; }
+.pr-badge.pr-lock { color: #7d7599; }
+
+.pr-ico-wrap {
+  flex: 0 0 auto; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center;
+  background: #000; border-radius: 10px; border: 1px solid #ffffff12;
+}
+.pr-ico { width: 42px; height: 42px; object-fit: contain; display: block; }
+.pr-ico.pr-ico-off { display: none; }
+
+.pr-card-body { flex: 1 1 auto; min-width: 0; }
+.pr-card-title { font-weight: 800; font-size: 14px; color: #ffffff; }
+.pr-clv { font-size: 11px; font-weight: 800; color: #b98cff; }
+.pr-area { color: #7d7599; font-weight: 500; font-size: 11px; text-transform: capitalize; }
+.pr-card-metrics { display: flex; gap: 12px; align-items: baseline; margin-top: 3px; }
+.pr-metric-main { font-weight: 800; font-size: 13px; color: #b98cff; }
+.pr-here .pr-metric-main { color: #d7bcff; }
+.pr-card.pr-up .pr-metric-main { color: #9a90b8; }
+.pr-metric-sub { color: #8a829f; font-weight: 600; font-size: 12px; }
+
+/* flat outlined "ghost" button: transparent with a purple hairline, fills on hover */
+.pr-tp {
+  all: unset; box-sizing: border-box; cursor: pointer; flex: 0 0 auto;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 7px 12px; border-radius: 8px; white-space: nowrap;
+  color: #c3b0e8; background: transparent; border: 1px solid #4a3d6b;
+  transition: color .12s, background .12s, border-color .12s;
+}
+.pr-tp:hover { color: #fff; background: #7b3ff2; border-color: #7b3ff2; }
+.pr-tp:active { background: #6a34d8; }
+.pr-tp:disabled { opacity: 0.55; cursor: default; }
+.pr-tp.pr-fail { color: #e88; background: transparent; border-color: #7a3b3b; }
+.pr-here .pr-tp { color: #fff; background: #7b3ff2; border-color: #7b3ff2; }
+.pr-here .pr-tp:hover { background: #8f4dff; border-color: #8f4dff; }
+
+.pr-foot { padding: 9px 16px; font-size: 11px; color: #7d7599; border-top: 1px solid #ffffff10; text-align: center; }
+.pr-foot .pr-heart { color: #a35bff; }
+.pr-foot .pr-link { color: #b98cff; font-weight: 400; text-decoration: none; }
+.pr-foot .pr-link:hover { text-decoration: underline; }
+.pr-contribute { color: #d7bcff; font-weight: 800; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.pr-contribute:hover { color: #fff; }
