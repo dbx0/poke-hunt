@@ -141,8 +141,12 @@
 
   var HUNT_ALIAS = { nidoranfe: "nidoranfemale", nidoranma: "nidoranmale" };
 
-  // Build hunt candidates: hunt.slug -> creature (offline slug match)
-  function buildHunts(hunts, creatures) {
+  // Build hunt candidates: hunt.slug -> creature (offline slug match).
+  // `speeds` is required so we can exclude creatures with no productivity data
+  // (matching piwtools, which skips hunts without a map/kills-per-hour entry —
+  // otherwise the combat-cadence fallback wildly overrates a one-shot low-level
+  // hunt, e.g. Farfetch'D showing 16M XP/h for a Lv.350+ Pokemon).
+  function buildHunts(hunts, creatures, speeds) {
     var byName = new Map();
     creatures.forEach(function (c) { byName.set(normSlug(c.name), c); });
     var out = [];
@@ -152,6 +156,7 @@
       var c = byName.get(key) || byName.get(HUNT_ALIAS[key] || "");
       if (!c) return;                              // towns / unmatched: skip
       if (!(c.attacks && c.attacks.length) || !(c.huntLevel > 0)) return; // not huntable
+      if (speeds && !speeds[String(c.pokeId)]) return; // no productivity data -> skip
       out.push({ slug: h.slug, name: h.name || c.name, area: h.area, minLevel: h.level || c.huntLevel, creature: c });
     });
     return out;
@@ -188,7 +193,7 @@
     data.itemPrices = {};
     var itemList = data.items && (data.items.items || data.items) || [];
     itemList.forEach(function (it) { if (it && it.name) data.itemPrices[String(it.name).trim().toLowerCase()] = it.npcPrice || 0; });
-    var huntList = buildHunts(data.hunts, creatures);
+    var huntList = buildHunts(data.hunts, creatures, data.speeds);
     var huntBySlug = new Map();
     huntList.forEach(function (h) { huntBySlug.set(h.slug, h); });
     var byName = new Map();
