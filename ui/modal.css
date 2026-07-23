@@ -10,6 +10,7 @@
   backdrop-filter: blur(3px);
 }
 .pr-modal {
+  position: relative;
   width: min(600px, 95vw); max-height: 88vh; overflow: hidden;
   display: flex; flex-direction: column;
   background: #000;
@@ -227,6 +228,82 @@
 .pr-tp.pr-fail { color: #e88; background: transparent; border-color: #7a3b3b; }
 .pr-here .pr-tp { color: #fff; background: #7b3ff2; border-color: #7b3ff2; }
 .pr-here .pr-tp:hover { background: #8f4dff; border-color: #8f4dff; }
+
+/* ---------- Capture tab ---------- */
+.pr-cap-search { position: relative; }
+.pr-cap-input {
+  width: 100%; box-sizing: border-box; padding: 11px 13px; border-radius: 11px;
+  background: #0b0b0d; border: 1px solid #2a2140; color: #fff; font-size: 14px; outline: none;
+}
+.pr-cap-input:focus { border-color: #7b3ff2; box-shadow: 0 0 0 3px #7b3ff233; }
+.pr-cap-input::placeholder { color: #6f6790; }
+.pr-cap-results {
+  display: flex; flex-direction: column; gap: 4px; margin-top: 8px;
+  max-height: 46vh; overflow-y: auto; padding-right: 2px;
+  scrollbar-width: thin; scrollbar-color: #7b3ff2 transparent;
+}
+.pr-cap-results::-webkit-scrollbar { width: 10px; }
+.pr-cap-results::-webkit-scrollbar-thumb { background: #7b3ff2; border-radius: 999px; border: 3px solid #000; background-clip: padding-box; }
+.pr-cap-opt {
+  all: unset; cursor: pointer; display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-radius: 10px; border: 1px solid transparent;
+}
+.pr-cap-opt:hover { background: #7b3ff21a; border-color: #7b3ff255; }
+.pr-cap-opt-ico, .pr-cap-opt-ico .pr-ico { width: 34px; height: 34px; }
+.pr-cap-opt-name { font-weight: 700; color: #fff; }
+.pr-cap-opt-lv { font-size: 11px; font-weight: 700; color: #b98cff; }
+.pr-cap-opt-types { margin-left: auto; display: flex; gap: 5px; }
+.pr-cap-none, .pr-cap-hint { padding: 16px 6px; text-align: center; color: #8a829f; font-size: 12px; }
+
+.pr-cap-target {
+  display: flex; align-items: center; gap: 12px; padding: 12px;
+  border-radius: 14px; background: #100c1c; border: 1px solid #3a2b5c;
+}
+.pr-cap-target-ico { flex: 0 0 auto; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
+  background: #000; border-radius: 10px; border: 1px solid #241d38; }
+.pr-cap-target-ico .pr-ico { width: 50px; height: 50px; }
+.pr-cap-target-body { flex: 1 1 auto; min-width: 0; }
+.pr-cap-target-top { display: flex; align-items: baseline; gap: 8px; }
+.pr-cap-target-name { font-weight: 800; font-size: 17px; color: #fff; }
+.pr-cap-change { all: unset; cursor: pointer; font-size: 11px; font-weight: 700; color: #b98cff;
+  padding: 5px 10px; border-radius: 8px; border: 1px solid #7b3ff255; }
+.pr-cap-change:hover { background: #7b3ff21a; color: #fff; }
+
+.pr-info {
+  cursor: help; font-size: 11px; font-weight: 700; color: #b98cff;
+  padding: 2px 7px; border-radius: 999px; border: 1px solid #7b3ff255; white-space: nowrap;
+}
+.pr-info:hover, .pr-info:focus { background: #7b3ff21a; color: #fff; outline: none; }
+
+/* shared hover tooltip (positioned by JS, lives in .pr-modal) */
+.pr-tip {
+  position: absolute; z-index: 20; min-width: 220px; max-width: 280px;
+  padding: 10px 12px; border-radius: 12px;
+  background: #17131f; border: 1px solid #3a2b5c; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.pr-tip[hidden] { display: none; }
+.pr-tip-title { font-size: 12px; font-weight: 800; color: #fff; margin-bottom: 7px; }
+.pr-tip-note { margin-top: 7px; font-size: 10px; color: #8a829f; }
+.pr-q-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pr-q-table td { padding: 3px 0; color: #d7d2ec; }
+.pr-q-table td:first-child { font-weight: 700; color: #fff; }
+.pr-q-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.pr-q-range { text-align: center; color: #9a90b8; font-variant-numeric: tabular-nums; }
+.pr-q-pct { text-align: right; font-weight: 800; color: #b98cff; font-variant-numeric: tabular-nums; }
+
+/* capture suggestion rows reuse the .pr-card style */
+.pr-cap-star { color: #ffd35a; }
+.pr-cap-under { color: #e0a24a; font-weight: 700; }
+/* effectiveness badges */
+.pr-eff {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap;
+}
+.pr-eff-super   { color: #a3e39c; background: #63bc5a22; border-color: #63bc5a88; }
+.pr-eff-neutral { color: #c7c1da; background: #ffffff10; border-color: #ffffff22; }
+.pr-eff-resist  { color: #f0b48f; background: #d9784522; border-color: #d9784588; }
+.pr-eff-none    { color: #ef9aad; background: #ce406922; border-color: #ce406988; }
 
 .pr-foot { padding: 9px 16px; font-size: 11px; color: #7d7599; border-top: 1px solid #ffffff10; text-align: center; }
 .pr-foot .pr-heart { color: #a35bff; }

@@ -336,7 +336,92 @@
         .sort(function (a, b) { return b[metricKey] - a[metricKey]; });
     }
 
+    // ---------- Capture tab ----------
+    // creatures you can go catch in the wild = those with a hunt (indexed by pokeId)
+    var huntByCreatureId = new Map();
+    huntList.forEach(function (h) { if (!huntByCreatureId.has(h.creature.pokeId)) huntByCreatureId.set(h.creature.pokeId, h); });
+
+    function spriteIdOf(c) { return (c.looktype != null && looktypeToBase[c.looktype]) || c.pokeId; }
+
+    // autocomplete over catchable targets; matches name substring, ranked by
+    // best prefix match then hunt level. Returns lightweight display records.
+    function searchTargets(query, limit) {
+      var q = normSlug(query);
+      var out = [];
+      huntList.forEach(function (h) {
+        var c = h.creature;
+        var n = normSlug(c.name);
+        var idx = q ? n.indexOf(q) : 0;
+        if (q && idx < 0) return;
+        out.push({ pokeId: c.pokeId, spritePokeId: spriteIdOf(c), name: c.name,
+                   huntLevel: c.huntLevel, type1: c.type1, type2: c.type2,
+                   slug: h.slug, area: h.area, minLevel: h.minLevel, _rank: q ? idx : 0 });
+      });
+      out.sort(function (a, b) { return a._rank - b._rank || a.huntLevel - b.huntLevel || a.name.localeCompare(b.name); });
+      return out.slice(0, limit || 8);
+    }
+
+    // best (highest) type effectiveness of an owned creature's usable moves vs a target
+    function bestEff(ownedCreature, ownedLevel, target) {
+      var defTypes = [target.type1, target.type2];
+      var best = 0, moveType = null;
+      (ownedCreature.attacks || []).forEach(function (mv) {
+        if (!mv || !mv.power) return;
+        if (mv.learnLevel && mv.learnLevel > ownedLevel) return;
+        var eff = effectiveness(data.typechart, mv.type, defTypes);
+        if (eff > best) { best = eff; moveType = mv.type; }
+      });
+      return { eff: best, moveType: moveType };
+    }
+
+    // Rank the player's owned Pokemon by how easily they weaken a capture target.
+    // Fewer hits-to-kill = fastest to bring HP down = easiest (this already folds in
+    // type advantage + the owned Pokemon's level/stats). ownedPokes: [{id,pokeId,name,level,stats?}].
+    function captureRanking(targetPokeId, ownedPokes, opts) {
+      opts = opts || {};
+      var target = byId.get(targetPokeId) || byName.get(normSlug(targetPokeId));
+      if (!target) return { error: "unknown-target", target: null, list: [] };
+      var eStats = enemyStats(target);
+      var targetHp = enemyTotalHp(target);
+      var hunt = huntByCreatureId.get(target.pokeId) || null;
+
+      var list = (ownedPokes || []).map(function (op) {
+        var oc = (op.pokeId != null && byId.get(op.pokeId)) || byName.get(normSlug(op.name));
+        if (!oc) return null;
+        var lvl = op.level || 1;
+        var pStats = playerStats({ level: lvl, stats: op.stats }, oc);
+        var dmg = bestMoveDamage(oc, pStats, target, eStats, lvl, data.typechart, 1);
+        var be = bestEff(oc, lvl, target);
+        var hits = dmg > 0 ? Math.max(1, targetHp / dmg) : Infinity;
+        return {
+          id: op.id, pokeId: oc.pokeId, spritePokeId: spriteIdOf(oc),
+          name: op.name || oc.name, level: lvl,
+          type1: oc.type1, type2: oc.type2,
+          eff: +be.eff.toFixed(2), moveType: be.moveType,
+          hits: isFinite(hits) ? +hits.toFixed(2) : null,
+          canReach: hunt ? lvl >= hunt.minLevel : true
+        };
+      }).filter(Boolean);
+
+      // easiest first: can-reach and effective (fewest hits) win; infeasible last
+      list.sort(function (a, b) {
+        if (a.hits == null && b.hits == null) return b.level - a.level;
+        if (a.hits == null) return 1;
+        if (b.hits == null) return -1;
+        return a.hits - b.hits || b.eff - a.eff || b.level - a.level;
+      });
+
+      return {
+        target: { pokeId: target.pokeId, spritePokeId: spriteIdOf(target), name: target.name,
+                  huntLevel: target.huntLevel, type1: target.type1, type2: target.type2,
+                  rarity: target.rarity, slug: hunt && hunt.slug, area: hunt && hunt.area,
+                  minLevel: hunt && hunt.minLevel },
+        list: list
+      };
+    }
+
     return { computeRoute: computeRoute, rankNow: rankNow, huntCount: huntList.length,
+             searchTargets: searchTargets, captureRanking: captureRanking,
              _internal: { statAt: statAt, enemyStats: enemyStats, enemyTotalHp: enemyTotalHp,
                           effectiveness: effectiveness, killsPerHour: killsPerHour, buildHunts: buildHunts } };
   }

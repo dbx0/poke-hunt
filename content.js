@@ -17,7 +17,10 @@
   var vipOverride = null;      // user toggle: null = auto, true/false = forced
   var dataVersion = "";        // bundled data version (from data/meta.json)
   var activeBoosts = {};       // boost key -> until (ms epoch)
-  var collapsed = { plan: true, higher: true };  // collapse state per section
+  var collapsed = { plan: true, higher: true, capHard: true };  // collapse state per section
+  var ownedPokes = [];         // full owned-Pokemon list from the WS (for Capture)
+  var ownedSig = "";           // signature of ownedPokes to detect real changes
+  var captureTarget = null;    // selected capture target (pokeId) or null
 
   var norm = function (s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); };
 
@@ -128,12 +131,26 @@
   }
 
   function cacheWsPokes(list) {
+    var owned = [];
     list.forEach(function (p) {
       var name = p.name || p.pokemon || "";
       if (!name || p.level == null) return;
-      wsPokes.set(norm(name) + "@" + p.level, { pokeId: p.pokeId, stats: pickStats(p) });
+      var species = p.pokeId != null ? p.pokeId : p.speciesId;   // WS uses speciesId
+      wsPokes.set(norm(name) + "@" + p.level, { pokeId: species, stats: pickStats(p) });
+      owned.push({
+        id: p.id != null ? p.id : p._id, pokeId: species, name: name, level: p.level,
+        stats: pickStats(p), team: !!p.team, leader: !!p.leader
+      });
     });
-    maybeRender();            // only if the active poke changed
+    if (owned.length) {
+      var sig = owned.map(function (p) { return p.id + ":" + p.level; }).join(",");
+      var changed = sig !== ownedSig;
+      ownedSig = sig;
+      ownedPokes = owned;
+      // refresh the Capture ranking only when the owned list genuinely changed
+      if (changed && isOpen() && currentTab === "capture" && captureTarget != null) render();
+    }
+    maybeRender();            // route tabs: only if the active poke changed
   }
 
   // one round-trip to the page bridge; resolves with the page's send-result
@@ -258,6 +275,9 @@
   // re-render only when the active Pokemon actually changed (avoids chat churn)
   function maybeRender() {
     if (!isOpen()) return;
+    // the Capture tab never re-renders from DOM mutations (chat, etc.) — it only
+    // refreshes when the owned-Pokemon list actually changes (see cacheWsPokes)
+    if (currentTab === "capture") return;
     if (pokeKey(readActivePoke()) !== lastPokeKey) render();
   }
 
@@ -285,11 +305,13 @@
         '<div class="pr-tabs">' +
           '<button class="pr-tab" data-tab="xp">XP farm</button>' +
           '<button class="pr-tab" data-tab="loot">Loot farm</button>' +
+          '<button class="pr-tab" data-tab="capture">Capture</button>' +
         '</div>' +
         '<div class="pr-body"></div>' +
         '<footer class="pr-foot">created with <span class="pr-heart">♥︎</span> by ' +
           '<a class="pr-link" href="https://x.com/maldbx0" target="_blank" rel="noopener noreferrer">bx0</a>' +
           ' · <span class="pr-contribute" role="button" tabindex="0">support me</span></footer>' +
+        '<div class="pr-tip" hidden></div>' +
       '</div>';
     shadow.appendChild(wrap);
     wrap.addEventListener("click", function (e) { if (e.target === wrap) close(); });
@@ -373,11 +395,8 @@
   function render(opts) {
     opts = opts || {};
     ensureModal();
-    var poke = readActivePoke();
-    currentPoke = poke;
     var hero = shadow.querySelector(".pr-hero");
     var body = shadow.querySelector(".pr-body");
-    if (!poke) { hero.innerHTML = ""; body.innerHTML = '<div class="pr-empty">No active Pokemon found. Open the game with a party selected.</div>'; return; }
 
     // version label: extension version + bundled data version
     var extVer = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "";
@@ -387,6 +406,13 @@
     shadow.querySelectorAll(".pr-tab").forEach(function (t) {
       t.classList.toggle("pr-tab-on", t.getAttribute("data-tab") === currentTab);
     });
+
+    // Capture tab has its own layout (search + target + owned-Pokemon ranking)
+    if (currentTab === "capture") { hero.innerHTML = ""; renderCapture(body); return; }
+
+    var poke = readActivePoke();
+    currentPoke = poke;
+    if (!poke) { hero.innerHTML = ""; body.innerHTML = '<div class="pr-empty">No active Pokemon found. Open the game with a party selected.</div>'; return; }
 
     var mods = activeMods();
     mods.metric = currentTab;
@@ -505,8 +531,181 @@
     });
   }
 
+  // ---------- Capture tab ----------
+  var typeChip = function (t) { return t ? '<span class="pr-type pr-type-' + esc(t.toLowerCase()) + '">' + esc(t) + '</span>' : ""; };
+
+  // Quality-on-capture odds by tier (game thresholds; bands sum to exactly 100%).
+  var QUALITY_TIERS = [
+    { name: "Legendary", range: "1.7–1.8", chance: "0.96%", color: "#ff8c3c" },
+    { name: "Epic", range: "1.5–1.7", chance: "5%", color: "#f0c040" },
+    { name: "Rare", range: "1.3–1.5", chance: "20%", color: "#b06cff" },
+    { name: "Uncommon", range: "1.1–1.3", chance: "30%", color: "#7fd4ff" },
+    { name: "Common", range: "1.0–1.1", chance: "34.04%", color: "#63d873" },
+    { name: "Weak", range: "0.8–1.0", chance: "10%", color: "#9aa6b3" }
+  ];
+  function qualityTipHtml() {
+    var rows = QUALITY_TIERS.map(function (q) {
+      return '<tr><td><span class="pr-q-dot" style="background:' + q.color + '"></span>' + q.name + '</td>' +
+        '<td class="pr-q-range">' + q.range + '</td><td class="pr-q-pct">' + q.chance + '</td></tr>';
+    }).join("");
+    return '<div class="pr-tip-title">Quality on capture</div>' +
+      '<table class="pr-q-table">' + rows + '</table>' +
+      '<div class="pr-tip-note">Same odds for every capture. Perfect (1.800): 0.29%.</div>';
+  }
+
+  // shared hover tooltip, positioned near the trigger (lives outside .pr-body so
+  // it isn't clipped by the scroll container)
+  function showTip(trigger, html) {
+    var tip = shadow.querySelector(".pr-tip");
+    tip.innerHTML = html; tip.hidden = false;
+    var tr = trigger.getBoundingClientRect(), mr = shadow.querySelector(".pr-modal").getBoundingClientRect();
+    var top = tr.bottom - mr.top + 6, left = tr.left - mr.left;
+    var maxLeft = mr.width - tip.offsetWidth - 10;
+    tip.style.top = top + "px";
+    tip.style.left = Math.max(10, Math.min(left, maxLeft)) + "px";
+  }
+  function hideTip() { var tip = shadow && shadow.querySelector(".pr-tip"); if (tip) tip.hidden = true; }
+  function wireTip(trigger, html) {
+    trigger.addEventListener("mouseenter", function () { showTip(trigger, html); });
+    trigger.addEventListener("mouseleave", hideTip);
+    trigger.addEventListener("focus", function () { showTip(trigger, html); });
+    trigger.addEventListener("blur", hideTip);
+  }
+
+  function switchAndGo(instanceId, slug, name, area, btn) {
+    // set that Pokemon active (poke-summon uses the instance id), then teleport
+    if (instanceId != null) bridge({ cmd: "send", payload: { type: "poke-summon", pokeId: instanceId } });
+    return teleport(slug, name, area);
+  }
+
+  // a capture-suggestion card, styled like the hunt cards but without the wide
+  // level-band badge (icon sits flush-left); the best pick gets a ★ in the title.
+  function captureCard(p, best, targetHunt) {
+    var effCls = p.eff >= 2 ? "super" : p.eff === 1 ? "neutral" : p.eff > 0 ? "resist" : "none";
+    var effTxt = p.eff >= 2 ? "super-effective" : p.eff === 1 ? "neutral" : p.eff > 0 ? "resisted" : "no effect";
+    var hitsTxt = p.hits == null ? "can't damage" : p.hits + " hits";
+    return '<div class="pr-card' + (best ? " pr-here" : "") + (p.canReach ? "" : " pr-up") + '">' +
+      '<div class="pr-ico-wrap">' + iconHtml(p) + '</div>' +
+      '<div class="pr-card-body">' +
+        '<div class="pr-card-title">' + (best ? '<span class="pr-cap-star">★</span> ' : "") + esc(p.name) +
+          ' <span class="pr-clv">Lv.' + p.level + '</span>' +
+          (p.canReach ? "" : ' <span class="pr-area pr-cap-under">underleveled</span>') + '</div>' +
+        '<div class="pr-card-metrics"><span class="pr-metric-main">' + hitsTxt + '</span>' +
+          typeChip(p.moveType) +
+          '<span class="pr-eff pr-eff-' + effCls + '">' + effTxt + '</span></div>' +
+      '</div>' +
+      '<button class="pr-tp" data-id="' + esc(String(p.id)) + '" data-slug="' + esc(targetHunt.slug || "") +
+        '" data-name="' + esc(targetHunt.name) + '" data-area="' + esc(targetHunt.area || "") + '">Switch &amp; Go</button>' +
+    '</div>';
+  }
+
+  function renderCapture(body) {
+    // no target chosen yet -> search box + type-to-search tip
+    if (captureTarget == null) {
+      body.innerHTML =
+        '<div class="pr-cap-search">' +
+          '<input class="pr-cap-input" type="text" placeholder="Search a Pokémon to capture…" autocomplete="off" spellcheck="false">' +
+          '<div class="pr-cap-results"></div>' +
+        '</div>';
+      var input = body.querySelector(".pr-cap-input");
+      var results = body.querySelector(".pr-cap-results");
+      // keep keystrokes (WASD movement, etc.) from reaching the game while typing
+      ["keydown", "keyup", "keypress"].forEach(function (ev) {
+        input.addEventListener(ev, function (e) { e.stopPropagation(); });
+      });
+      var renderResults = function () {
+        var q = input.value.trim();
+        if (!q) { results.innerHTML = '<div class="pr-cap-hint">Start typing a Pokémon name to search.</div>'; return; }
+        var items = engine.searchTargets(q, 30);
+        results.innerHTML = items.map(function (t) {
+          return '<button class="pr-cap-opt" data-id="' + t.pokeId + '">' +
+            '<span class="pr-cap-opt-ico">' + iconHtml(t) + '</span>' +
+            '<span class="pr-cap-opt-name">' + esc(t.name) + '</span>' +
+            '<span class="pr-cap-opt-lv">Lv.' + t.huntLevel + '</span>' +
+            '<span class="pr-cap-opt-types">' + typeChip(t.type1) + typeChip(t.type2) + '</span>' +
+          '</button>';
+        }).join("") || '<div class="pr-cap-none">No match</div>';
+        results.querySelectorAll(".pr-cap-opt").forEach(function (opt) {
+          opt.addEventListener("click", function () { captureTarget = +opt.getAttribute("data-id"); render(); });
+        });
+      };
+      input.addEventListener("input", renderResults);
+      renderResults();
+      setTimeout(function () { input.focus(); }, 30);
+      return;
+    }
+
+    // target chosen -> target card + ranked owned Pokemon (same card style as tabs)
+    var r = engine.captureRanking(captureTarget, ownedPokes);
+    if (!r.target) { captureTarget = null; renderCapture(body); return; }
+    var t = r.target;
+
+    var targetCard = '<div class="pr-cap-target">' +
+      '<div class="pr-cap-target-ico">' + iconHtml(t) + '</div>' +
+      '<div class="pr-cap-target-body">' +
+        '<div class="pr-cap-target-top"><span class="pr-cap-target-name">' + esc(t.name) + '</span>' +
+          '<span class="pr-hero-lv">Lv.' + t.huntLevel + '</span>' +
+          '<span class="pr-info" tabindex="0" role="button" aria-label="Quality odds">Quality ⓘ</span></div>' +
+        '<div class="pr-hero-types">' + typeChip(t.type1) + typeChip(t.type2) + '</div>' +
+      '</div>' +
+      '<button class="pr-cap-change" type="button">Change</button>' +
+    '</div>';
+
+    var listHtml;
+    if (!ownedPokes.length) {
+      listHtml = '<div class="pr-empty">Your Pokémon list hasn\'t loaded yet — open your team once in-game.</div>';
+    } else if (!r.list.length) {
+      listHtml = '<div class="pr-empty">None of your Pokémon can damage this target.</div>';
+    } else {
+      // split: good picks (<=10 hits) shown; the rest tucked into a collapsed section
+      var easy = r.list.filter(function (p) { return p.hits != null && p.hits <= 10; });
+      var hard = r.list.filter(function (p) { return !(p.hits != null && p.hits <= 10); });
+      if (!easy.length) { easy = hard.slice(0, 1); hard = hard.slice(1); }  // always show at least the top pick
+      listHtml = '<div class="pr-section">Fastest catch</div>' +
+        easy.map(function (p, i) { return captureCard(p, i === 0, t); }).join("");
+      if (hard.length) {
+        var open = !collapsed.capHard;
+        listHtml += '<button class="pr-collapse" type="button" data-key="capHard" aria-expanded="' + open + '">' +
+          '<span class="pr-collapse-arrow">' + (open ? "▾" : "▸") + '</span> Takes too long (10+ hits)' +
+          '<span class="pr-collapse-n">' + hard.length + '</span></button>' +
+          '<div class="pr-below' + (open ? "" : " pr-collapsed") + '" data-key="capHard">' +
+            hard.map(function (p) { return captureCard(p, false, t); }).join("") + '</div>';
+      }
+    }
+
+    body.innerHTML = targetCard + listHtml;
+
+    body.querySelector(".pr-cap-change").addEventListener("click", function () { captureTarget = null; render(); });
+    var info = body.querySelector(".pr-info");
+    if (info) wireTip(info, qualityTipHtml());
+    var capCol = body.querySelector('.pr-collapse[data-key="capHard"]');
+    if (capCol) capCol.addEventListener("click", function () {
+      collapsed.capHard = !collapsed.capHard;
+      var open = !collapsed.capHard;
+      body.querySelector('.pr-below[data-key="capHard"]').classList.toggle("pr-collapsed", !open);
+      capCol.setAttribute("aria-expanded", open ? "true" : "false");
+      capCol.querySelector(".pr-collapse-arrow").textContent = open ? "▾" : "▸";
+    });
+    body.querySelectorAll("img.pr-ico").forEach(function (img) {
+      img.addEventListener("error", function () { img.classList.add("pr-ico-off"); });
+    });
+    body.querySelectorAll(".pr-tp").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-id"), slug = btn.getAttribute("data-slug");
+        var name = btn.getAttribute("data-name"), area = btn.getAttribute("data-area");
+        if (!slug) { btn.textContent = "No hunt"; return; }
+        btn.disabled = true; btn.textContent = "…";
+        switchAndGo(id, slug, name, area, btn).then(function (res) {
+          if (res && res.ok) return;   // modal closed on success
+          btn.textContent = "Failed"; btn.classList.add("pr-fail");
+          setTimeout(function () { btn.disabled = false; btn.innerHTML = "Switch &amp; Go"; btn.classList.remove("pr-fail"); }, 1800);
+        });
+      });
+    });
+  }
+
   function open() { ensureModal(); host.style.display = "block"; render({ center: true }); }
-  function close() { if (host) host.style.display = "none"; }
+  function close() { hideTip(); if (host) host.style.display = "none"; }
   function toggle() { isOpen() ? close() : open(); }
 
   // ---------- dock button ----------

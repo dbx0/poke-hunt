@@ -192,5 +192,32 @@ test("unknown species returns a clean error", () => {
   assert.strictEqual(route.error, "unknown-species");
 });
 
+test("searchTargets autocompletes catchable creatures by name", () => {
+  const res = engine.searchTargets("chari", 8);
+  assert.ok(res.length >= 1);
+  assert.ok(res.every((r) => /chari/i.test(r.name)));
+  assert.ok(res[0].type1 && res[0].huntLevel > 0 && res[0].spritePokeId > 0);
+});
+
+test("captureRanking orders owned Pokemon by fewest hits (type advantage wins)", () => {
+  const id = (n) => byName(n).pokeId;
+  const owned = [
+    { id: "a", pokeId: id("Blastoise"), name: "Blastoise", level: 100 },
+    { id: "b", pokeId: id("Golem"), name: "Golem", level: 100 },
+    { id: "c", pokeId: id("Venusaur"), name: "Venusaur", level: 100 },
+  ];
+  const r = engine.captureRanking(id("Charizard"), owned);
+  assert.ok(r.target && r.target.slug, "target resolves to a hunt");
+  assert.strictEqual(r.list.length, 3);
+  // sorted ascending by hits; Rock (Golem) super-effective vs Fire/Flying -> fewest
+  for (let i = 1; i < r.list.length; i++) assert.ok(r.list[i - 1].hits <= r.list[i].hits);
+  assert.strictEqual(r.list[0].name, "Golem");
+});
+
+test("captureRanking on unknown target returns clean error", () => {
+  const r = engine.captureRanking(999999, []);
+  assert.strictEqual(r.error, "unknown-target");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
