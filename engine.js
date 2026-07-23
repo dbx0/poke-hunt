@@ -162,8 +162,20 @@
     return out;
   }
 
-  var VIP_XP_MULT = 1.5;   // "VIP XP +50%"
-  var BOOST_MULT = 1.5;    // pokexp / loot boosts are each +50%
+  var VIP_BONUS = 0.5;     // "VIP XP +50%"
+  var BOOST_BONUS = 0.5;   // pokexp / loot boosts are each +50%
+
+  // Prestige "Trainer Bonus" (Mentoria): when the trainer is >200 levels above the
+  // battling Pokemon, +0.5% XP per level beyond the gap, capped by profession rank
+  // (E=20% … A=100%, S keeps A's cap). Returned as a fraction (0..1).
+  function trainerBonusFraction(mods, pokeLevel) {
+    if (!mods || mods.profession !== "prestige") return 0;
+    var beyond = Math.max(0, (mods.trainerLevel || 0) - pokeLevel - 200);
+    if (beyond <= 0) return 0;
+    var rank = Math.max(0, Math.min(5, mods.professionRank || 0)); // 0=E … 5=S
+    var capPct = Math.min(100, (rank + 1) * 20);
+    return Math.min(capPct, 0.5 * beyond) / 100;
+  }
 
   // metrics for one hunt given the player's level/stats and account modifiers
   function huntMetrics(hunt, poke, playerCreature, data, mods) {
@@ -175,8 +187,10 @@
     if (dmg <= 0) return { xpPerHour: 0, moneyPerHour: 0, kph: 0, hits: Infinity, dmg: 0 };
     var hits = Math.max(1, enemyTotalHp(c) / dmg);
     var kph = killsPerHour(data.speeds, c.pokeId, hits);
-    var xpMult = (mods.vip ? VIP_XP_MULT : 1) * (mods.xpBoost ? BOOST_MULT : 1);
-    var moneyMult = mods.lootBoost ? BOOST_MULT : 1;
+    // XP bonuses stack ADDITIVELY (dev note: "soma… em vez de multiplicar por cima")
+    var xpMult = 1 + (mods.vip ? VIP_BONUS : 0) + (mods.xpBoost ? BOOST_BONUS : 0) +
+      trainerBonusFraction(mods, poke.level);
+    var moneyMult = 1 + (mods.lootBoost ? BOOST_BONUS : 0);
     return {
       xpPerHour: kph * (c.experience || 0) * xpMult,
       moneyPerHour: kph * expectedLootValue(c, data.itemPrices || {}) * moneyMult,
@@ -214,13 +228,16 @@
       return byName.get(normSlug(poke.name)) || null;
     }
 
-    // resolve account modifiers (vip, clan, active boosts) for a given poke
+    // resolve account modifiers (vip, clan, boosts, prestige trainer bonus) for a poke
     function resolveMods(opts, playerCreature) {
       return {
         vip: !!opts.vip,
         xpBoost: !!opts.xpBoost,
         lootBoost: !!opts.lootBoost,
-        clanMult: clanMultiplier(clans, opts.clan, opts.clanRank, playerCreature)
+        clanMult: clanMultiplier(clans, opts.clan, opts.clanRank, playerCreature),
+        profession: opts.profession || null,
+        professionRank: opts.professionRank || 0,
+        trainerLevel: opts.trainerLevel || 0
       };
     }
 
@@ -316,7 +333,9 @@
                          spritePokeId: (playerCreature.looktype != null && looktypeToBase[playerCreature.looktype]) || playerCreature.pokeId,
                          type1: playerCreature.type1, type2: playerCreature.type2, rarity: playerCreature.rarity },
                vip: mods.vip, xpBoost: mods.xpBoost, lootBoost: mods.lootBoost,
-               clanMult: mods.clanMult, steps: steps, upcoming: upcoming };
+               clanMult: mods.clanMult,
+               trainerBonusPct: Math.round(trainerBonusFraction(mods, poke.level) * 100),
+               steps: steps, upcoming: upcoming };
     }
 
     // flat ranking of all currently-available hunts (for "best now"), by metric

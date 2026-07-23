@@ -155,12 +155,32 @@ test("loot route bands by money/h and marks the current band", () => {
   assert.ok(r.steps.every((s) => s.moneyPerHour >= 0));
 });
 
-test("pokexp boost adds +50% XP and stacks with VIP (x2.25)", () => {
+test("XP bonuses stack ADDITIVELY: boost +50%, VIP+boost = x2.0", () => {
   const base = engine.rankNow({ name: "Haunter", level: 88 })[0];
   const boosted = engine.rankNow({ name: "Haunter", level: 88 }, { xpBoost: true }).find((r) => r.slug === base.slug);
   assert.ok(Math.abs(boosted.xpPerHour - base.xpPerHour * 1.5) <= base.xpPerHour * 0.02, "boost = x1.5");
   const both = engine.rankNow({ name: "Haunter", level: 88 }, { vip: true, xpBoost: true }).find((r) => r.slug === base.slug);
-  assert.ok(Math.abs(both.xpPerHour - base.xpPerHour * 2.25) <= base.xpPerHour * 0.03, "vip+boost = x2.25");
+  assert.ok(Math.abs(both.xpPerHour - base.xpPerHour * 2.0) <= base.xpPerHour * 0.02, "vip+boost = x2.0 (additive)");
+});
+
+test("Prestige Trainer Bonus: +0.5%/lvl past a 200-gap, capped by rank, additive", () => {
+  // trainer 600 vs poke 200 -> 200 beyond gap -> +100%, but rank E caps at 20%
+  const base = engine.rankNow({ name: "Haunter", level: 200 })[0];
+  const eRank = engine.rankNow({ name: "Haunter", level: 200 },
+    { profession: "prestige", professionRank: 0, trainerLevel: 600 }).find((r) => r.slug === base.slug);
+  assert.ok(Math.abs(eRank.xpPerHour - base.xpPerHour * 1.2) <= base.xpPerHour * 0.01, "rank E caps at +20%");
+  // rank A (4) allows the full +100% here -> x2.0
+  const aRank = engine.rankNow({ name: "Haunter", level: 200 },
+    { profession: "prestige", professionRank: 4, trainerLevel: 600 }).find((r) => r.slug === base.slug);
+  assert.ok(Math.abs(aRank.xpPerHour - base.xpPerHour * 2.0) <= base.xpPerHour * 0.01, "rank A -> +100%");
+  // gap not exceeded (trainer 300 vs poke 200 = 100 < 200) -> no bonus
+  const none = engine.rankNow({ name: "Haunter", level: 200 },
+    { profession: "prestige", professionRank: 5, trainerLevel: 300 }).find((r) => r.slug === base.slug);
+  assert.strictEqual(none.xpPerHour, base.xpPerHour, "under the 200 gap -> no bonus");
+  // non-prestige profession -> no bonus even with a huge gap
+  const notPrestige = engine.rankNow({ name: "Haunter", level: 200 },
+    { profession: "botanist", professionRank: 5, trainerLevel: 600 }).find((r) => r.slug === base.slug);
+  assert.strictEqual(notPrestige.xpPerHour, base.xpPerHour, "only prestige gets the bonus");
 });
 
 test("loot boost adds +50% money and does not touch XP", () => {

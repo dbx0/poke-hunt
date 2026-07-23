@@ -13,7 +13,7 @@
   var wsPokes = new Map();     // normName+"@"+level -> ws poke (for stat enrichment)
   var socketReady = false;
   var pending = new Map();     // requestId -> resolve
-  var account = { vip: false, clan: null, clanRank: 0, detected: false };
+  var account = { vip: false, clan: null, clanRank: 0, detected: false, profession: null, professionRank: 0, trainerLevel: 0 };
   var vipOverride = null;      // user toggle: null = auto, true/false = forced
   var dataVersion = "";        // bundled data version (from data/meta.json)
   var activeBoosts = {};       // boost key -> until (ms epoch)
@@ -75,7 +75,12 @@
       if (clanRaw && typeof clanRaw === "object") { clanId = clanRaw.key || clanRaw.id || clanRaw.name || null; clanRank = clanRaw.rank || 0; }
       else if (typeof clanRaw === "string" && clanRaw) { clanId = clanRaw; }
       if (c.clanRank != null) clanRank = c.clanRank;
-      account = { vip: vip, clan: clanId, clanRank: clanRank, detected: true };
+      account = {
+        vip: vip, clan: clanId, clanRank: clanRank, detected: true,
+        profession: c.profession || null,          // "prestige" enables the Trainer Bonus
+        professionRank: c.professionRank || 0,      // 0=E … 5=S
+        trainerLevel: c.level || 0                  // trainer/account level
+      };
     } catch (e) { /* stays default; user can toggle manually */ }
   }
 
@@ -102,7 +107,10 @@
       clan: account.clan,
       clanRank: account.clanRank,
       xpBoost: boostActive("pokexp"),     // +50% Pokemon XP
-      lootBoost: boostActive("loot")      // +50% loot value
+      lootBoost: boostActive("loot"),     // +50% loot value
+      profession: account.profession,     // "prestige" -> Trainer Bonus
+      professionRank: account.professionRank,
+      trainerLevel: account.trainerLevel
     };
   }
 
@@ -254,6 +262,7 @@
     ".pr-live{color:#b98cff;font-weight:700}.pr-est{color:#9a90b8;font-weight:700}" +
     ".pr-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}" +
     ".pr-flag{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;color:#d7bcff;background:#7b3ff21f;border:1px solid #a35bff77}" +
+    ".pr-flag-trainer{color:#ffe08a;background:#f0b71e1c;border-color:#f0b71e88}" +
     ".pr-collapse{cursor:pointer;display:flex;align-items:center;gap:8px;margin-top:4px;padding:9px 11px;border-radius:11px;font-size:12px;font-weight:800;color:#b98cff;border:1px solid #7b3ff233;background:#7b3ff20d}" +
     ".pr-collapse-arrow{font-size:10px;width:10px}.pr-collapse-n{margin-left:auto;font-size:11px;font-weight:700;color:#8a829f;background:#ffffff12;padding:1px 8px;border-radius:999px}" +
     ".pr-below{display:flex;flex-direction:column;gap:9px;margin-top:9px}.pr-below.pr-collapsed{display:none}" +
@@ -433,6 +442,8 @@
     if (currentTab === "loot" && route.lootBoost) flags.push('<span class="pr-flag pr-flag-boost">Loot boost +50%</span>');
     if (mods.clan && route.clanMult > 1) flags.push('<span class="pr-flag pr-flag-clan">' + esc(mods.clan) +
       ' R' + mods.clanRank + ' +' + Math.round((route.clanMult - 1) * 100) + '%</span>');
+    if (currentTab === "xp" && route.trainerBonusPct > 0) flags.push('<span class="pr-flag pr-flag-trainer">Trainer +' +
+      route.trainerBonusPct + '% XP</span>');
     hero.innerHTML =
       '<div class="pr-hero-ico">' + iconHtml({ spritePokeId: p.spritePokeId, pokeId: p.pokeId }) + '</div>' +
       '<div class="pr-hero-body">' +

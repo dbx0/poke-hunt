@@ -103,6 +103,8 @@
   font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px;
   color: #d7bcff; background: #7b3ff21f; border: 1px solid #a35bff77; white-space: nowrap; letter-spacing: 0.2px;
 }
+/* Prestige Trainer Bonus — gold, matching the in-game golden line */
+.pr-flag-trainer { color: #ffe08a; background: #f0b71e1c; border-color: #f0b71e88; }
 
 .pr-controls {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
