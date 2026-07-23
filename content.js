@@ -47,6 +47,9 @@
   }
 
   // ---------- data + engine ----------
+  // true while our extension context is still valid; goes false after the
+  // extension is reloaded/updated while this old content script keeps running
+  function contextAlive() { try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; } }
   function url(p) { return chrome.runtime.getURL(p); }
   async function loadData() {
     var files = ["data/creatures.json", "data/hunts.json", "data/speeds.json", "data/typechart.json", "data/clans.json", "data/items.json", "data/meta.json"];
@@ -729,6 +732,7 @@
 
   // ask the game to (re)send current boosts + pokes so we have fresh state
   function requestState() {
+    if (!contextAlive()) return;
     bridge({ cmd: "send", payload: { type: "boosts-refresh" } });
     bridge({ cmd: "send", payload: { type: "pokes-get" } });
   }
@@ -739,6 +743,9 @@
     setTimeout(requestState, 800);
     setTimeout(requestState, 2500);
     var mo = new MutationObserver(function () {
+      // after the extension is reloaded, this stale script's chrome.* APIs die;
+      // stop observing so we don't spam "Extension context invalidated"
+      if (!contextAlive()) { mo.disconnect(); return; }
       injectButton();
       maybeRender();           // only re-render if the active poke changed
     });
