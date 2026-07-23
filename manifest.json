@@ -53,6 +53,7 @@
         "ui/modal.css",
         "assets/gengar.png",
         "assets/gengar-logo.png",
+        "assets/pokehunt-logo.png",
         "assets/sprites/*.png"
       ],
       "matches": [

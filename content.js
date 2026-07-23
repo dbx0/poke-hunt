@@ -249,8 +249,8 @@
     ":host{all:initial}*{box-sizing:border-box;font-family:system-ui,sans-serif}" +
     ".pr-backdrop{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center}" +
     ".pr-modal{width:min(600px,95vw);max-height:88vh;overflow:hidden;display:flex;flex-direction:column;background:#000;color:#fff;border:1px solid #2a2140;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.7)}" +
-    ".pr-head{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #7b3ff233}" +
-    ".pr-logo{width:26px;height:26px;object-fit:contain}.pr-title{flex:1;display:flex;align-items:center;gap:7px;font-weight:800;font-size:16px;color:#fff}.pr-ver{font-size:11px;font-weight:600;color:#6f6790}.pr-ver::before{content:'- '}.pr-close{cursor:pointer;background:none;border:none;color:#b9a7e6;font-size:15px}" +
+    ".pr-head{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:16px 16px 12px;border-bottom:1px solid #7b3ff233}" +
+    ".pr-logo{height:46px;width:auto;max-width:82%;object-fit:contain;display:block}.pr-close{position:absolute;top:10px;right:12px;cursor:pointer;background:none;border:none;color:#b9a7e6;font-size:15px}" +
     ".pr-hero{display:flex;align-items:center;gap:12px;margin:12px 12px 4px;padding:10px 12px;border-radius:12px;background:#100c1c;border:1px solid #241d38}.pr-hero:empty{display:none}" +
     ".pr-hero-ico{flex:0 0 auto;width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:#000;border-radius:10px;border:1px solid #241d38}.pr-hero-ico .pr-ico{width:46px;height:46px}" +
     ".pr-hero-body{flex:1;min-width:0}.pr-hero-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.pr-hero-name{font-weight:800;font-size:16px;color:#fff}.pr-hero-lv{font-weight:700;font-size:12px;color:#b98cff}" +
@@ -278,8 +278,8 @@
     ".pr-card-body{flex:1;min-width:0}.pr-card-title{font-weight:800;font-size:14px;color:#fff}.pr-area{color:#7d7599;font-size:11px}.pr-clv{font-size:11px;font-weight:800;color:#b98cff}" +
     ".pr-card-metrics{display:flex;gap:12px;margin-top:3px}.pr-metric-main{font-weight:800;font-size:13px;color:#b98cff}.pr-metric-sub{color:#8a829f;font-size:12px}" +
     ".pr-tp{cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:7px 12px;border-radius:8px;color:#c3b0e8;background:transparent;border:1px solid #4a3d6b}.pr-tp:hover{color:#fff;background:#7b3ff2;border-color:#7b3ff2}.pr-here .pr-tp{color:#fff;background:#7b3ff2;border-color:#7b3ff2}" +
-    ".pr-tp.pr-fail{color:#e88;background:transparent;border-color:#7a3b3b}.pr-foot{padding:9px 16px;font-size:11px;color:#7d7599;border-top:1px solid #ffffff10;text-align:center}" +
-    ".pr-foot .pr-heart{color:#a35bff}.pr-foot .pr-link{color:#b98cff;font-weight:400;text-decoration:none}.pr-contribute{color:#d7bcff;font-weight:800;cursor:pointer;text-decoration:underline}";
+    ".pr-tp.pr-fail{color:#e88;background:transparent;border-color:#7a3b3b}.pr-foot{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 16px;font-size:10px;color:#7d7599;border-top:1px solid #ffffff10;text-align:center}" +
+    ".pr-foot .pr-heart{color:#a35bff}.pr-foot .pr-link{color:#b98cff;font-weight:400;text-decoration:none}.pr-foot .pr-ver{font-size:9px;font-weight:600;color:#5b556f}.pr-contribute{color:#d7bcff;font-weight:800;cursor:pointer;text-decoration:underline}";
 
   var host, shadow, currentPoke, currentTab = "xp", lastPokeKey = null;
   function isOpen() { return host && host.style.display !== "none"; }
@@ -310,8 +310,7 @@
     wrap.innerHTML =
       '<div class="pr-modal" role="dialog" aria-label="Poke Hunt">' +
         '<header class="pr-head">' +
-          '<img class="pr-logo" src="' + url("assets/gengar-logo.png") + '" alt="">' +
-          '<span class="pr-title">Poke Hunt<span class="pr-ver"></span></span>' +
+          '<img class="pr-logo" src="' + url("assets/pokehunt-logo.png") + '" alt="Poke Hunt">' +
           '<button class="pr-close" title="Close">✕</button></header>' +
         '<div class="pr-hero"></div>' +
         '<div class="pr-tabs">' +
@@ -320,9 +319,12 @@
           '<button class="pr-tab" data-tab="capture">Capture</button>' +
         '</div>' +
         '<div class="pr-body"></div>' +
-        '<footer class="pr-foot">created with <span class="pr-heart">♥︎</span> by ' +
-          '<a class="pr-link" href="https://x.com/maldbx0" target="_blank" rel="noopener noreferrer">bx0</a>' +
-          ' · <span class="pr-contribute" role="button" tabindex="0">support me</span></footer>' +
+        '<footer class="pr-foot">' +
+          '<span class="pr-credit">created with <span class="pr-heart">♥︎</span> by ' +
+            '<a class="pr-link" href="https://x.com/maldbx0" target="_blank" rel="noopener noreferrer">bx0</a>' +
+            ' · <span class="pr-contribute" role="button" tabindex="0">support me</span></span>' +
+          '<span class="pr-ver"></span>' +
+        '</footer>' +
         '<div class="pr-tip" hidden></div>' +
       '</div>';
     shadow.appendChild(wrap);
