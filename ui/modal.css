@@ -33,6 +33,21 @@
 }
 .pr-close:hover { background: #7b3ff233; color: #fff; }
 
+/* update-available banner */
+.pr-update {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; font-size: 12px; font-weight: 700; color: #201400;
+  background: linear-gradient(90deg, #f0c040, #ffdf80);
+}
+.pr-update[hidden] { display: none; }
+.pr-update-txt { flex: 1 1 auto; }
+.pr-update-txt b { font-weight: 900; }
+.pr-update-btn {
+  flex: 0 0 auto; text-decoration: none; font-weight: 800; font-size: 11px;
+  color: #fff; background: #1a1226; padding: 5px 12px; border-radius: 999px;
+}
+.pr-update-btn:hover { background: #000; }
+
 /* current-Pokemon hero card */
 .pr-hero {
   display: flex; align-items: center; gap: 12px; margin: 12px 12px 4px;
