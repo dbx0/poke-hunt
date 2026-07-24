@@ -61,40 +61,6 @@
     if (isOpen() && currentTab === "places") render();   // live-update the Places tab
   }
 
-  // ---------- update check ----------
-  var UPDATE_URL = "https://poke-hunt.com/version.json";
-  var updateInfo = null;       // {version, url, notes} when a newer version is available
-
-  function currentVersion() { try { return chrome.runtime.getManifest().version; } catch (e) { return "0.0.0"; } }
-  function cmpVer(a, b) {
-    var A = String(a).split("."), B = String(b).split(".");
-    for (var i = 0; i < 3; i++) { var x = +A[i] || 0, y = +B[i] || 0; if (x !== y) return x - y; }
-    return 0;
-  }
-  // checks on tab load and then every 3h while the tab stays open
-  var UPDATE_INTERVAL_MS = 3 * 3600 * 1000;
-  async function checkForUpdate() {
-    try {
-      var r = await fetch(UPDATE_URL, { cache: "no-store" });
-      if (!r.ok) return;
-      var j = await r.json();
-      if (j && j.version && cmpVer(j.version, currentVersion()) > 0) {
-        updateInfo = { version: j.version, url: j.url || "https://poke-hunt.com", notes: j.notes || "" };
-        renderUpdateBanner();
-      }
-    } catch (e) { /* offline / endpoint not live yet -> no banner */ }
-  }
-  function renderUpdateBanner() {
-    if (!shadow) return;
-    var el = shadow.querySelector(".pr-update");
-    if (!el) return;
-    if (!updateInfo) { el.hidden = true; el.innerHTML = ""; return; }
-    el.hidden = false;
-    el.innerHTML = '<span class="pr-update-txt">⬆ New version <b>v' + esc(updateInfo.version) + '</b> available</span>' +
-      '<a class="pr-update-btn" href="' + esc(updateInfo.url || "https://poke-hunt.com") +
-      '" target="_blank" rel="noopener noreferrer">Download</a>';
-  }
-
   var norm = function (s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); };
 
   // the game auths API calls with a Bearer token kept in web storage (not cookies)
@@ -357,7 +323,6 @@
     ".pr-modal{width:min(600px,95vw);max-height:88vh;overflow:hidden;display:flex;flex-direction:column;background:#000;color:#fff;border:1px solid #2a2140;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.7)}" +
     ".pr-head{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:16px 16px 12px;border-bottom:1px solid #7b3ff233}" +
     ".pr-logo-link{display:inline-flex;cursor:pointer}.pr-logo{height:46px;width:auto;max-width:82%;object-fit:contain;display:block}.pr-close{position:absolute;top:10px;right:12px;cursor:pointer;background:none;border:none;color:#b9a7e6;font-size:15px}" +
-    ".pr-update{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:12px;font-weight:700;color:#201400;background:linear-gradient(90deg,#f0c040,#ffdf80)}.pr-update[hidden]{display:none}.pr-update-txt{flex:1 1 auto}.pr-update-btn{flex:0 0 auto;text-decoration:none;font-weight:800;font-size:11px;color:#fff;background:#1a1226;padding:5px 12px;border-radius:999px}" +
     ".pr-hero{display:flex;align-items:center;gap:12px;margin:12px 12px 4px;padding:10px 12px;border-radius:12px;background:#100c1c;border:1px solid #241d38}.pr-hero:empty{display:none}" +
     ".pr-hero-ico{flex:0 0 auto;width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:#000;border-radius:10px;border:1px solid #241d38}.pr-hero-ico .pr-ico{width:46px;height:46px}" +
     ".pr-hero-body{flex:1;min-width:0}.pr-hero-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.pr-hero-name{font-weight:800;font-size:16px;color:#fff}.pr-hero-lv{font-weight:700;font-size:12px;color:#b98cff}" +
@@ -422,7 +387,6 @@
             '<img class="pr-logo" src="' + url("assets/pokehunt-logo.png") + '" alt="Poke Hunt">' +
           '</a>' +
           '<button class="pr-close" title="Close">✕</button></header>' +
-        '<div class="pr-update" hidden></div>' +
         '<div class="pr-hero"></div>' +
         '<div class="pr-tabs">' +
           '<button class="pr-tab" data-tab="xp">XP farm</button>' +
@@ -901,7 +865,7 @@
     });
   }
 
-  function open() { ensureModal(); host.style.display = "block"; renderUpdateBanner(); render({ center: true }); }
+  function open() { ensureModal(); host.style.display = "block"; render({ center: true }); }
   function close() { hideTip(); if (host) host.style.display = "none"; }
   function toggle() { isOpen() ? close() : open(); }
 
@@ -934,11 +898,6 @@
   // ---------- boot ----------
   Promise.all([loadData(), loadAccount(), loadPlaces()]).then(function () {
     injectButton();
-    checkForUpdate();
-    var updTimer = setInterval(function () {
-      if (!contextAlive()) { clearInterval(updTimer); return; }
-      checkForUpdate();
-    }, UPDATE_INTERVAL_MS);
     setTimeout(requestState, 800);
     setTimeout(requestState, 2500);
     var mo = new MutationObserver(function () {
