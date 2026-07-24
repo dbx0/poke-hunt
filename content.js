@@ -22,15 +22,117 @@
   var ownedSig = "";           // signature of ownedPokes to detect real changes
   var captureTarget = null;    // selected capture target (pokeId) or null
 
+  // ---------- Auto level up ----------
+  var autoLevelUp = false;                 // when on, auto-teleport as the plan's band changes
+  var autoSpecies = null, autoLevel = null, autoSlug = null; // tracking for the active poke
+  var autoTeleporting = false;             // in-flight guard so we don't stack teleports
+  var suppressToastUntil = 0;              // skip the favorite toast for auto teleports
+  var cdHost, cdShadow, cdTimer = null;    // Auto level up countdown modal
+
   // ---------- Places (favorites + recent teleports), persisted in chrome.storage ----------
   var places = { favorites: [], recent: [] };
   var RECENT_MAX = 10;   // keep only the last 10 non-favorited teleports
   function storeGet(keys) { return new Promise(function (res) { try { chrome.storage.local.get(keys, function (v) { res(v || {}); }); } catch (e) { res({}); } }); }
   function storeSet(obj) { try { chrome.storage.local.set(obj); } catch (e) {} }
   async function loadPlaces() {
-    var v = await storeGet(["favorites", "recent"]);
+    var v = await storeGet(["favorites", "recent", "autoLevelUp"]);
     places.favorites = Array.isArray(v.favorites) ? v.favorites : [];
     places.recent = Array.isArray(v.recent) ? v.recent : [];
+    autoLevelUp = !!v.autoLevelUp;
+  }
+
+  // When enabled: as the active Pokémon levels up and the XP plan's current band
+  // changes, auto-teleport to the new best spot. This mirrors the "Best match" card
+  // the user sees (same computeRoute path). It only fires when the current-band hunt
+  // actually differs, so a Pokémon sitting in its top band (e.g. 150+, on a plateau
+  // where every level maps to the same best hunt) never teleports.
+  function autoLevelTick() {
+    if (!autoLevelUp || !engine || autoTeleporting) return;
+    var poke = readActivePoke();
+    if (!poke) return;
+    var sp = norm(poke.name);
+    // switched to a different Pokémon: re-sync to it without teleporting
+    if (sp !== autoSpecies) { autoSpecies = sp; autoLevel = poke.level; autoSlug = null; }
+    if (poke.level === autoLevel && autoSlug != null) return;   // no level change and already synced
+    autoLevel = poke.level;
+    var mods = activeMods(); mods.metric = "xp";
+    var route;
+    try { route = engine.computeRoute(poke, mods); } catch (e) { return; }
+    if (!route || route.error || !route.steps) return;
+    var cur = route.steps.filter(function (s) { return s.current; })[0];
+    if (!cur || !cur.slug) return;
+    if (autoSlug == null) { autoSlug = cur.slug; return; }      // first sync for this poke: no travel
+    if (cur.slug === autoSlug) return;                          // same band's best hunt: nothing to do
+    autoSlug = cur.slug;
+    autoTeleporting = true;                                      // hold until the countdown resolves
+    showAutoCountdown(cur);
+  }
+
+  // 5s "teleporting you in…" confirmation before an auto level-up jump. Rendered in
+  // its own shadow host so it shows even while the main modal is closed, and reuses
+  // the app stylesheet so the hunt card looks identical.
+  function ensureCountdown() {
+    if (cdHost) return;
+    cdHost = document.createElement("div");
+    cdHost.id = "poke-hunt-countdown";
+    cdHost.style.display = "none";
+    cdShadow = cdHost.attachShadow({ mode: "open" });
+    document.body.appendChild(cdHost);
+  }
+
+  function closeCountdown(proceed, step) {
+    if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+    if (cdHost) cdHost.style.display = "none";
+    if (proceed && step) {
+      suppressToastUntil = Date.now() + 6000;                   // don't nag with the favorite toast
+      teleport(step.slug, step.name, step.area).then(function () { autoTeleporting = false; },
+                                                     function () { autoTeleporting = false; });
+    } else {
+      autoTeleporting = false;                                  // cancelled: stay put (already synced to this band)
+    }
+  }
+
+  function showAutoCountdown(step) {
+    ensureCountdown();
+    var band = step.fromLevel + (step.toLevel ? "–" + step.toLevel : "+");
+    var cardHtml = card(step, { band: band, current: true });
+    var wrap = document.createElement("div");
+    wrap.className = "pr-backdrop";
+    wrap.innerHTML =
+      '<div class="pr-modal pr-cd" role="dialog" aria-label="Auto teleport">' +
+        '<header class="pr-head">' +
+          '<a class="pr-logo-link" href="https://poke-hunt.com" target="_blank" rel="noopener noreferrer" title="poke-hunt.com">' +
+            '<img class="pr-logo" src="' + url("assets/pokehunt-logo.png") + '" alt="Poke Hunt"></a>' +
+          '<button class="pr-close" title="Cancel">✕</button></header>' +
+        '<div class="pr-body">' +
+          '<div class="pr-section">Teleporting to next best match</div>' +
+          '<div class="pr-cd-card">' + cardHtml + '</div>' +
+          '<div class="pr-cd-count"><div class="pr-cd-num">5s</div></div>' +
+          '<button class="pr-cd-cancel" type="button">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    // strip the card's own Teleport button — this modal drives the jump itself
+    var tp = wrap.querySelector(".pr-cd-card .pr-tp"); if (tp) tp.remove();
+    cdShadow.innerHTML = "";
+    var st = document.createElement("style"); st.textContent = FALLBACK_CSS; cdShadow.appendChild(st);
+    fetch(url("ui/modal.css")).then(function (r) { return r.text(); }).then(function (css) { st.textContent = css; }).catch(function () {});
+    cdShadow.appendChild(wrap);
+    cdHost.style.display = "";
+
+    wrap.querySelector(".pr-cd-card img.pr-ico") && wrap.querySelector(".pr-cd-card img.pr-ico")
+      .addEventListener("error", function (e) { e.target.classList.add("pr-ico-off"); });
+    wrap.addEventListener("click", function (e) { if (e.target === wrap) closeCountdown(false); });
+    wrap.querySelector(".pr-close").addEventListener("click", function () { closeCountdown(false); });
+    wrap.querySelector(".pr-cd-cancel").addEventListener("click", function () { closeCountdown(false); });
+
+    var num = wrap.querySelector(".pr-cd-num");
+    var left = 5;
+    if (cdTimer) clearInterval(cdTimer);
+    cdTimer = setInterval(function () {
+      left -= 1;
+      if (left <= 0) { closeCountdown(true, step); return; }
+      num.textContent = left + "s";
+    }, 1000);
   }
   function isFavorite(slug) { return places.favorites.some(function (p) { return p.slug === slug; }); }
   function addFavorite(p) {
@@ -57,7 +159,7 @@
     if (!slug) return;
     var wasFav = isFavorite(slug);
     recordTeleport(slug, name, area);
-    if (!wasFav && !toastShown[slug]) { toastShown[slug] = true; showFavToast({ slug: slug, name: name, area: area }); }
+    if (Date.now() >= suppressToastUntil && !wasFav && !toastShown[slug]) { toastShown[slug] = true; showFavToast({ slug: slug, name: name, area: area }); }
     if (isOpen() && currentTab === "places") render();   // live-update the Places tab
   }
 
@@ -213,6 +315,7 @@
       if (changed && isOpen() && currentTab === "capture" && captureTarget != null) render();
     }
     maybeRender();            // route tabs: only if the active poke changed
+    autoLevelTick();          // auto level up: teleport when the plan's band changes
   }
 
   // one round-trip to the page bridge; resolves with the page's send-result
@@ -360,7 +463,20 @@
     ".pr-card-metrics{display:flex;gap:12px;margin-top:3px}.pr-metric-main{font-weight:800;font-size:13px;color:#b98cff}.pr-metric-sub{color:#8a829f;font-size:12px}" +
     ".pr-tp{cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:7px 12px;border-radius:8px;color:#c3b0e8;background:transparent;border:1px solid #4a3d6b}.pr-tp:hover{color:#fff;background:#7b3ff2;border-color:#7b3ff2}.pr-here .pr-tp{color:#fff;background:#7b3ff2;border-color:#7b3ff2}" +
     ".pr-tp.pr-fail{color:#e88;background:transparent;border-color:#7a3b3b}.pr-foot{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 16px;font-size:10px;color:#7d7599;border-top:1px solid #ffffff10;text-align:center}" +
-    ".pr-foot .pr-heart{color:#a35bff}.pr-foot .pr-link{color:#b98cff;font-weight:400;text-decoration:none}.pr-foot .pr-ver{font-size:9px;font-weight:600;color:#5b556f}.pr-contribute{color:#d7bcff;font-weight:800;cursor:pointer;text-decoration:underline}";
+    ".pr-foot .pr-heart{color:#a35bff}.pr-foot .pr-link{color:#b98cff;font-weight:400;text-decoration:none}.pr-foot .pr-ver{font-size:9px;font-weight:600;color:#5b556f}.pr-contribute{color:#d7bcff;font-weight:800;cursor:pointer;text-decoration:underline}" +
+    ".pr-optbar[hidden]{display:none}.pr-optbar{padding:7px 12px;border-bottom:1px solid #ffffff10;background:#08070d}" +
+    ".pr-opt{position:relative;display:flex;align-items:center;gap:9px}" +
+    ".pr-opt-label{font-weight:700;font-size:12px;color:#e7e0f5}" +
+    ".pr-opt-tip{position:relative;cursor:help;width:15px;height:15px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-size:9px;font-weight:800;color:#c9adff;background:#7b3ff21f;border:1px solid #a35bff77}" +
+    ".pr-opt-tipbox{visibility:hidden;opacity:0;transition:opacity .15s ease;position:absolute;left:0;top:22px;z-index:50;width:230px;padding:9px 11px;border-radius:10px;background:#100c1c;border:1px solid #7b3ff2aa;color:#cfc6e6;font-size:11px;font-weight:500;line-height:1.45;box-shadow:0 12px 34px rgba(0,0,0,.6)}" +
+    ".pr-opt-tip:hover .pr-opt-tipbox,.pr-opt-tip:focus .pr-opt-tipbox{visibility:visible;opacity:1}" +
+    ".pr-switch{flex:0 0 auto;cursor:pointer;width:28px;height:16px;border-radius:999px;border:1px solid #4a3d6b;background:#1a1330;padding:0;position:relative;transition:background .18s ease,border-color .18s ease}" +
+    ".pr-switch.on{background:#7b3ff2;border-color:#7b3ff2}" +
+    ".pr-switch-knob{position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:999px;background:#fff;transition:transform .18s ease}.pr-switch.on .pr-switch-knob{transform:translateX(12px)}" +
+    ".pr-cd{width:min(380px,92vw)}" +
+    ".pr-cd-count{text-align:center;margin:6px 0 2px}" +
+    ".pr-cd-num{font-size:34px;font-weight:800;color:#b98cff;line-height:1.15;font-variant-numeric:tabular-nums}" +
+    ".pr-cd-cancel{cursor:pointer;align-self:center;margin-top:2px;padding:9px 22px;border-radius:10px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#c3b0e8;background:transparent;border:1px solid #4a3d6b}.pr-cd-cancel:hover{color:#fff;background:#2a2140;border-color:#2a2140}";
 
   var host, shadow, currentPoke, currentTab = "xp", lastPokeKey = null;
   function isOpen() { return host && host.style.display !== "none"; }
@@ -402,6 +518,7 @@
           '<button class="pr-tab" data-tab="capture">Capture</button>' +
           '<button class="pr-tab" data-tab="places">Favorites</button>' +
         '</div>' +
+        '<div class="pr-optbar" hidden></div>' +
         '<div class="pr-body"></div>' +
         '<footer class="pr-foot">' +
           '<span class="pr-credit">created with <span class="pr-heart">♥︎</span> by ' +
@@ -490,6 +607,33 @@
   }
 
 
+  // persistent options bar between the tabs and the scroll body (so its tooltips
+  // aren't clipped by the body's overflow). Only the XP tab uses it for now.
+  function renderOptbar() {
+    var bar = shadow.querySelector(".pr-optbar");
+    if (!bar) return;
+    if (currentTab !== "xp") { bar.hidden = true; bar.innerHTML = ""; return; }
+    bar.hidden = false;
+    bar.innerHTML =
+      '<div class="pr-opt">' +
+        '<span class="pr-opt-label">Auto level up</span>' +
+        '<span class="pr-opt-tip" tabindex="0">?' +
+          '<span class="pr-opt-tipbox">Auto-teleports to the next best XP hunt as your ' +
+          'Pokémon levels up.</span>' +
+        '</span>' +
+        '<button class="pr-switch' + (autoLevelUp ? ' on' : '') + '" type="button" role="switch" ' +
+          'aria-checked="' + (autoLevelUp ? 'true' : 'false') + '"><span class="pr-switch-knob"></span></button>' +
+      '</div>';
+    var sw = bar.querySelector(".pr-switch");
+    sw.addEventListener("click", function () {
+      autoLevelUp = !autoLevelUp;
+      storeSet({ autoLevelUp: autoLevelUp });
+      sw.classList.toggle("on", autoLevelUp);
+      sw.setAttribute("aria-checked", autoLevelUp ? "true" : "false");
+      if (autoLevelUp) { autoSlug = null; autoLevelTick(); }   // sync to current spot on enable
+    });
+  }
+
   function render(opts) {
     opts = opts || {};
     ensureModal();
@@ -504,6 +648,8 @@
     shadow.querySelectorAll(".pr-tab").forEach(function (t) {
       t.classList.toggle("pr-tab-on", t.getAttribute("data-tab") === currentTab);
     });
+
+    renderOptbar();   // options bar (currently just XP-tab Auto level up)
 
     // Capture tab has its own layout (search + target + owned-Pokemon ranking)
     if (currentTab === "capture") { hero.innerHTML = ""; renderCapture(body); return; }
@@ -919,6 +1065,7 @@
       if (!contextAlive()) { mo.disconnect(); return; }
       injectButton();
       maybeRender();           // only re-render if the active poke changed
+      autoLevelTick();         // catch level-ups the moment the DOM level updates
     });
     mo.observe(document.body, { childList: true, subtree: true });
   }).catch(function (e) { console.error("[Poke Hunt] init failed", e); });

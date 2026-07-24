@@ -328,3 +328,51 @@
 .pr-foot .pr-ver { font-size: 9px; font-weight: 600; color: #5b556f; }
 .pr-contribute { color: #d7bcff; font-weight: 800; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .pr-contribute:hover { color: #fff; }
+
+/* Options bar (between tabs and body). Slim; holds XP-tab toggles. */
+.pr-optbar[hidden] { display: none; }
+.pr-optbar {
+  padding: 7px 12px;
+  border-bottom: 1px solid #ffffff10;
+  background: #08070d;
+}
+.pr-opt { position: relative; display: flex; align-items: center; gap: 9px; }
+.pr-opt-label { font-weight: 700; font-size: 12px; color: #e7e0f5; }
+.pr-opt-tip {
+  position: relative; cursor: help; flex: 0 0 auto;
+  width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; font-size: 9px; font-weight: 800;
+  color: #c9adff; background: #7b3ff21f; border: 1px solid #a35bff77;
+}
+.pr-opt-tipbox {
+  visibility: hidden; opacity: 0; transition: opacity .15s ease;
+  position: absolute; left: 0; top: 22px; z-index: 50; width: 230px;
+  padding: 9px 11px; border-radius: 10px;
+  background: #100c1c; border: 1px solid #7b3ff2aa;
+  color: #cfc6e6; font-size: 11px; font-weight: 500; line-height: 1.45;
+  box-shadow: 0 12px 34px rgba(0,0,0,.6);
+}
+.pr-opt-tip:hover .pr-opt-tipbox, .pr-opt-tip:focus .pr-opt-tipbox { visibility: visible; opacity: 1; }
+.pr-switch {
+  flex: 0 0 auto; cursor: pointer; width: 28px; height: 16px; padding: 0;
+  border-radius: 999px; border: 1px solid #4a3d6b; background: #1a1330; position: relative;
+  transition: background .18s ease, border-color .18s ease;
+}
+.pr-switch.on { background: #7b3ff2; border-color: #7b3ff2; }
+.pr-switch-knob {
+  position: absolute; top: 2px; left: 2px; width: 10px; height: 10px;
+  border-radius: 999px; background: #fff; transition: transform .18s ease;
+}
+.pr-switch.on .pr-switch-knob { transform: translateX(12px); }
+
+/* Auto level up countdown modal */
+.pr-cd { width: min(380px, 92vw); }
+.pr-cd-count { text-align: center; margin: 6px 0 2px; }
+.pr-cd-num { font-size: 34px; font-weight: 800; color: #b98cff; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.pr-cd-cancel {
+  cursor: pointer; align-self: center; margin-top: 2px;
+  padding: 9px 22px; border-radius: 10px;
+  font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: #c3b0e8; background: transparent; border: 1px solid #4a3d6b;
+}
+.pr-cd-cancel:hover { color: #fff; background: #2a2140; border-color: #2a2140; }
