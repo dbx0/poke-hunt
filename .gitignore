@@ -6,6 +6,7 @@ node_modules/
 npm-debug.log*
 
 # Build artifacts
+dist/
 *.zip
 *.xpi
 web-ext-artifacts/

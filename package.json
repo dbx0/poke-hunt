@@ -5,6 +5,7 @@
   "description": "Chrome extension: best hunting routes for Poke Idle World",
   "scripts": {
     "test": "node test/engine.test.mjs",
+    "build": "node scripts/build.mjs",
     "refresh": "node scripts/refresh-data.mjs",
     "sprites": "node scripts/bundle-sprites.mjs"
   }
