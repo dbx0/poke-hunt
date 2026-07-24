@@ -550,12 +550,15 @@
     ".pr-cd-num{font-size:34px;font-weight:800;color:#b98cff;line-height:1.15;font-variant-numeric:tabular-nums}" +
     ".pr-cd-cancel{cursor:pointer;align-self:center;margin-top:2px;padding:9px 22px;border-radius:10px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#c3b0e8;background:transparent;border:1px solid #4a3d6b}.pr-cd-cancel:hover{color:#fff;background:#2a2140;border-color:#2a2140}";
 
-  var host, shadow, currentPoke, currentTab = "xp", lastPokeKey = null;
+  var host, shadow, currentPoke, currentTab = "xp", lastPokeKey = null, lastLang = null;
   function isOpen() { return host && host.style.display !== "none"; }
   function pokeKey(p) { return p ? (norm(p.name) + "@" + p.level) : ""; }
   // re-render only when the active Pokemon actually changed (avoids chat churn)
   function maybeRender() {
     if (!isOpen()) return;
+    // switching the game language re-renders its DOM (firing our observer); pick
+    // that up and re-render every tab so all strings follow, regardless of tab
+    if (currentLang() !== lastLang) { render(); return; }
     // the Capture tab never re-renders from DOM mutations (chat, etc.) — it only
     // refreshes when the owned-Pokemon list actually changes (see cacheWsPokes)
     if (currentTab === "capture" || currentTab === "places") return;
@@ -708,6 +711,7 @@
   function render(opts) {
     opts = opts || {};
     ensureModal();
+    lastLang = currentLang();               // keep the language baseline in sync
     var hero = shadow.querySelector(".pr-hero");
     var body = shadow.querySelector(".pr-body");
 
