@@ -99,11 +99,15 @@
     engine = window.PokeRouteEngine.createEngine({ creatures: creatures, hunts: hunts, speeds: speeds, typechart: typechart, clans: clans, items: items });
   }
 
-  // auto-detect VIP + clan from the player's own character (read-only GET)
-  async function loadAccount() {
+  // auto-detect VIP / clan / profession from the player's own character (read-only GET).
+  // The game's auth token may not be in storage yet at load, so retry with backoff
+  // until it succeeds (otherwise VIP/clan/trainer bonuses never get picked up).
+  async function loadAccount(attempt) {
+    attempt = attempt || 0;
+    if (!contextAlive()) return;
     try {
       var r = await fetch("/api/characters/me", { credentials: "include", headers: authHeaders() });
-      if (!r.ok) { console.warn("[Poke Hunt] /characters/me", r.status); return; }
+      if (!r.ok) throw new Error("HTTP " + r.status);
       var j = await r.json();
       var c = j.character || j;
       // isVip is a boolean; vipUntil is an ISO date string (parse defensively)
@@ -120,7 +124,11 @@
         professionRank: c.professionRank || 0,      // 0=E … 5=S
         trainerLevel: c.level || 0                  // trainer/account level
       };
-    } catch (e) { /* stays default; user can toggle manually */ }
+      if (isOpen()) render();                       // show the newly-detected badges
+    } catch (e) {
+      // token likely not ready yet — retry a few times with growing delay
+      if (attempt < 6) setTimeout(function () { loadAccount(attempt + 1); }, 1500 + attempt * 1500);
+    }
   }
 
   function cacheBoosts(list) {
@@ -865,7 +873,12 @@
     });
   }
 
-  function open() { ensureModal(); host.style.display = "block"; render({ center: true }); }
+  function open() {
+    ensureModal();
+    if (!account.detected) loadAccount();   // last chance to pick up VIP/clan/trainer
+    host.style.display = "block";
+    render({ center: true });
+  }
   function close() { hideTip(); if (host) host.style.display = "none"; }
   function toggle() { isOpen() ? close() : open(); }
 
