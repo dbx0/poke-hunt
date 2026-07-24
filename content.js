@@ -103,12 +103,12 @@
         '<header class="pr-head">' +
           '<a class="pr-logo-link" href="https://poke-hunt.com" target="_blank" rel="noopener noreferrer" title="poke-hunt.com">' +
             '<img class="pr-logo" src="' + url("assets/pokehunt-logo.png") + '" alt="Poke Hunt"></a>' +
-          '<button class="pr-close" title="Cancel">✕</button></header>' +
+          '<button class="pr-close" title="' + t("cancel") + '">✕</button></header>' +
         '<div class="pr-body">' +
-          '<div class="pr-section">Teleporting to next best match</div>' +
+          '<div class="pr-section">' + t("cd_section") + '</div>' +
           '<div class="pr-cd-card">' + cardHtml + '</div>' +
           '<div class="pr-cd-count"><div class="pr-cd-num">5s</div></div>' +
-          '<button class="pr-cd-cancel" type="button">Cancel</button>' +
+          '<button class="pr-cd-cancel" type="button">' + t("cancel") + '</button>' +
         '</div>' +
       '</div>';
     // strip the card's own Teleport button — this modal drives the jump itself
@@ -164,6 +164,78 @@
   }
 
   var norm = function (s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); };
+
+  // ---------- i18n ----------
+  // The game is i18next with supportedLngs ["en","pt"] and caches the active
+  // language in localStorage["i18nextLng"] (fallback "en"). We share the page
+  // origin, so read it directly; re-read on each lookup so switching language and
+  // reopening the panel reflects it without reloading the extension.
+  function currentLang() {
+    var l = "";
+    try { l = (window.localStorage.getItem("i18nextLng") || "").toLowerCase(); } catch (e) {}
+    if (!l) { try { l = (document.documentElement.getAttribute("lang") || navigator.language || "").toLowerCase(); } catch (e) {} }
+    return l.indexOf("pt") === 0 ? "pt" : "en";
+  }
+  var I18N = {
+    en: {
+      tab_xp: "XP farm", tab_loot: "Loot farm", tab_capture: "Capture", tab_favorites: "Favorites",
+      close: "Close", cancel: "Cancel", credit_created: "created with", credit_by: "by", support: "support me",
+      auto_label: "Auto level up",
+      auto_tip: "Auto-teleports to the next best XP hunt as your Pokémon levels up.",
+      cd_section: "Teleporting to next best match",
+      sec_best: "Best match", sec_plan: "Leveling plan", sec_higher: "Higher-level hunts", recent: "Recent",
+      empty_no_poke: "No active Pokemon found. Open the game with a party selected.",
+      empty_no_hunt: "No suitable hunt at this level.",
+      err_no_match: 'Could not match "{name}" to a creature.',
+      teleport: "Teleport", failed: "Failed", no_hunt: "No hunt", switch_go: "Switch &amp; Go",
+      flag_vip: "VIP +50% XP", flag_boost_xp: "Boosted XP +50%", flag_boost_loot: "Loot boost +50%",
+      flag_trainer: "Trainer +{n}% XP",
+      hits: "{n} hits", cant_damage: "can't damage", underleveled: "underleveled",
+      eff_super: "super-effective", eff_neutral: "neutral", eff_resisted: "resisted", eff_none: "no effect",
+      search_ph: "Search a Pokémon to capture…", search_hint: "Start typing a Pokémon name to search.",
+      search_none: "No match", cap_change: "Change", cap_quality: "Quality ⓘ",
+      cap_fastest: "Fastest catch", cap_slow: "Takes too long (10+ hits)",
+      cap_not_loaded: "Your Pokémon list hasn't loaded yet — open your team once in-game.",
+      cap_none_damage: "None of your Pokémon can damage this target.",
+      quality_title: "Quality on capture", quality_note: "Same odds for every capture. Perfect (1.800): 0.29%.",
+      q_legendary: "Legendary", q_epic: "Epic", q_rare: "Rare", q_uncommon: "Uncommon", q_common: "Common", q_weak: "Weak",
+      fav_add: "Add to favorites", fav_remove: "Remove from favorites",
+      places_empty: "Teleport somewhere, then ★ it to pin it here.",
+      fav_toast_msg: "Add <b>{name}</b> to favorites?", fav_toast_add: "★ Add"
+    },
+    pt: {
+      tab_xp: "Farm de XP", tab_loot: "Farm de loot", tab_capture: "Captura", tab_favorites: "Favoritos",
+      close: "Fechar", cancel: "Cancelar", credit_created: "feito com", credit_by: "por", support: "me apoiar",
+      auto_label: "Auto level up",
+      auto_tip: "Teleporta automaticamente para o melhor hunt de XP conforme seu Pokémon sobe de level.",
+      cd_section: "Teleportando para a próxima melhor escolha",
+      sec_best: "Melhor escolha", sec_plan: "Rota para level up", sec_higher: "Hunts de level superior", recent: "Recentes",
+      empty_no_poke: "Nenhum Pokémon ativo encontrado. Abra o jogo com uma equipe selecionada.",
+      empty_no_hunt: "Nenhum hunt adequado neste level.",
+      err_no_match: 'Não foi possível identificar "{name}" como uma criatura.',
+      teleport: "Teleportar", failed: "Falhou", no_hunt: "Sem hunt", switch_go: "Mudar e Ir",
+      flag_vip: "VIP +50% XP", flag_boost_xp: "XP boost +50%", flag_boost_loot: "Loot boost +50%",
+      flag_trainer: "Trainer +{n}% XP",
+      hits: "{n} hits", cant_damage: "sem dano", underleveled: "level baixo",
+      eff_super: "super eficaz", eff_neutral: "neutro", eff_resisted: "resistido", eff_none: "sem efeito",
+      search_ph: "Busque um Pokémon para capturar…", search_hint: "Comece a digitar o nome de um Pokémon.",
+      search_none: "Nenhum resultado", cap_change: "Trocar", cap_quality: "Quality ⓘ",
+      cap_fastest: "Captura mais rápida", cap_slow: "Demora demais (10+ hits)",
+      cap_not_loaded: "Sua lista de Pokémon ainda não carregou — abra sua equipe uma vez no jogo.",
+      cap_none_damage: "Nenhum dos seus Pokémon causa dano a este alvo.",
+      quality_title: "Quality on capture", quality_note: "Mesmas chances em toda captura. Perfeito (1.800): 0,29%.",
+      q_legendary: "Lendário", q_epic: "Épico", q_rare: "Raro", q_uncommon: "Incomum", q_common: "Comum", q_weak: "Fraco",
+      fav_add: "Adicionar aos favoritos", fav_remove: "Remover dos favoritos",
+      places_empty: "Teleporte para algum lugar e marque com ★ para fixar aqui.",
+      fav_toast_msg: "Adicionar <b>{name}</b> aos favoritos?", fav_toast_add: "★ Adicionar"
+    }
+  };
+  function t(key, vars) {
+    var dict = I18N[currentLang()] || I18N.en;
+    var s = dict[key]; if (s == null) s = I18N.en[key]; if (s == null) s = key;
+    if (vars) for (var k in vars) s = s.split("{" + k + "}").join(vars[k]);
+    return s;
+  }
 
   // the game auths API calls with a Bearer token kept in web storage (not cookies)
   function accessToken() {
@@ -387,9 +459,9 @@
   function showFavToast(place) {
     var prev = document.getElementById("poke-hunt-fav-toast");
     if (prev) prev.remove();
-    var t = document.createElement("div");
-    t.id = "poke-hunt-fav-toast";
-    t.style.cssText = "position:fixed;bottom:20px;right:20px;z-index:2147483001;display:flex;align-items:center;gap:10px;max-width:340px;" +
+    var toast = document.createElement("div");
+    toast.id = "poke-hunt-fav-toast";
+    toast.style.cssText = "position:fixed;bottom:20px;right:20px;z-index:2147483001;display:flex;align-items:center;gap:10px;max-width:340px;" +
       "background:#000;color:#fff;border:1px solid #2a2140;border-radius:8px;padding:11px 13px;" +
       "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:13px;box-shadow:0 12px 34px rgba(0,0,0,.6)";
     var logo = document.createElement("img");
@@ -397,18 +469,18 @@
     logo.style.cssText = "flex:0 0 auto;width:26px;height:26px;object-fit:contain";
     var msg = document.createElement("span");
     msg.style.cssText = "flex:1 1 auto";
-    msg.innerHTML = "Add <b>" + esc(place.name) + "</b> to favorites?";
+    msg.innerHTML = t("fav_toast_msg", { name: esc(place.name) });
     var add = document.createElement("button");
-    add.textContent = "★ Add";
+    add.textContent = t("fav_toast_add");
     add.style.cssText = "cursor:pointer;border:none;border-radius:8px;background:#7b3ff2;color:#fff;font-weight:700;padding:6px 11px;font-size:12px;white-space:nowrap";
-    add.onclick = function () { addFavorite(place); t.remove(); if (isOpen() && currentTab === "places") render(); };
+    add.onclick = function () { addFavorite(place); toast.remove(); if (isOpen() && currentTab === "places") render(); };
     var no = document.createElement("button");
     no.textContent = "✕";
     no.style.cssText = "cursor:pointer;border:none;background:transparent;color:#b9a7e6;font-size:14px";
-    no.onclick = function () { t.remove(); };
-    t.appendChild(logo); t.appendChild(msg); t.appendChild(add); t.appendChild(no);
-    document.body.appendChild(t);
-    setTimeout(function () { if (t.parentNode) t.remove(); }, 7000);
+    no.onclick = function () { toast.remove(); };
+    toast.appendChild(logo); toast.appendChild(msg); toast.appendChild(add); toast.appendChild(no);
+    document.body.appendChild(toast);
+    setTimeout(function () { if (toast.parentNode) toast.remove(); }, 7000);
   }
 
   // ---------- DOM: active poke ----------
@@ -510,20 +582,20 @@
           '<a class="pr-logo-link" href="https://poke-hunt.com" target="_blank" rel="noopener noreferrer" title="poke-hunt.com">' +
             '<img class="pr-logo" src="' + url("assets/pokehunt-logo.png") + '" alt="Poke Hunt">' +
           '</a>' +
-          '<button class="pr-close" title="Close">✕</button></header>' +
+          '<button class="pr-close" title="' + t("close") + '">✕</button></header>' +
         '<div class="pr-hero"></div>' +
         '<div class="pr-tabs">' +
-          '<button class="pr-tab" data-tab="xp">XP farm</button>' +
-          '<button class="pr-tab" data-tab="loot">Loot farm</button>' +
-          '<button class="pr-tab" data-tab="capture">Capture</button>' +
-          '<button class="pr-tab" data-tab="places">Favorites</button>' +
+          '<button class="pr-tab" data-tab="xp">' + t("tab_xp") + '</button>' +
+          '<button class="pr-tab" data-tab="loot">' + t("tab_loot") + '</button>' +
+          '<button class="pr-tab" data-tab="capture">' + t("tab_capture") + '</button>' +
+          '<button class="pr-tab" data-tab="places">' + t("tab_favorites") + '</button>' +
         '</div>' +
         '<div class="pr-optbar" hidden></div>' +
         '<div class="pr-body"></div>' +
         '<footer class="pr-foot">' +
-          '<span class="pr-credit">created with <span class="pr-heart">♥︎</span> by ' +
+          '<span class="pr-credit">' + t("credit_created") + ' <span class="pr-heart">♥︎</span> ' + t("credit_by") + ' ' +
             '<a class="pr-link" href="https://x.com/maldbx0" target="_blank" rel="noopener noreferrer">bx0</a>' +
-            ' · <span class="pr-contribute" role="button" tabindex="0">support me</span></span>' +
+            ' · <span class="pr-contribute" role="button" tabindex="0">' + t("support") + '</span></span>' +
           '<span class="pr-ver"></span>' +
         '</footer>' +
         '<div class="pr-tip" hidden></div>' +
@@ -600,9 +672,9 @@
           (s.area ? ' <span class="pr-area">' + esc(s.area) + '</span>' : '') + '</div>' +
         '<div class="pr-card-metrics"><span class="pr-metric-main">' + main + '</span>' +
           '<span class="pr-metric-sub">' + sub + '</span>' +
-          '<span class="pr-metric-sub">' + s.hitsToKill + ' hits</span></div>' +
+          '<span class="pr-metric-sub">' + t("hits", { n: s.hitsToKill }) + '</span></div>' +
       '</div>' +
-      '<button class="pr-tp" data-slug="' + esc(s.slug) + '" data-name="' + esc(s.name) + '" data-area="' + esc(s.area || "") + '">Teleport</button>' +
+      '<button class="pr-tp" data-slug="' + esc(s.slug) + '" data-name="' + esc(s.name) + '" data-area="' + esc(s.area || "") + '">' + t("teleport") + '</button>' +
     '</div>';
   }
 
@@ -616,10 +688,9 @@
     bar.hidden = false;
     bar.innerHTML =
       '<div class="pr-opt">' +
-        '<span class="pr-opt-label">Auto level up</span>' +
+        '<span class="pr-opt-label">' + t("auto_label") + '</span>' +
         '<span class="pr-opt-tip" tabindex="0">?' +
-          '<span class="pr-opt-tipbox">Auto-teleports to the next best XP hunt as your ' +
-          'Pokémon levels up.</span>' +
+          '<span class="pr-opt-tipbox">' + t("auto_tip") + '</span>' +
         '</span>' +
         '<button class="pr-switch' + (autoLevelUp ? ' on' : '') + '" type="button" role="switch" ' +
           'aria-checked="' + (autoLevelUp ? 'true' : 'false') + '"><span class="pr-switch-knob"></span></button>' +
@@ -657,7 +728,7 @@
 
     var poke = readActivePoke();
     currentPoke = poke;
-    if (!poke) { hero.innerHTML = ""; body.innerHTML = '<div class="pr-empty">No active Pokemon found. Open the game with a party selected.</div>'; return; }
+    if (!poke) { hero.innerHTML = ""; body.innerHTML = '<div class="pr-empty">' + t("empty_no_poke") + '</div>'; return; }
 
     var mods = activeMods();
     mods.metric = currentTab;
@@ -670,13 +741,13 @@
     var typeChips = types.filter(function (t) { var k = t.toUpperCase(); if (seen[k]) return false; seen[k] = 1; return true; })
       .map(function (t) { return '<span class="pr-type pr-type-' + esc(t.toLowerCase()) + '">' + esc(t) + '</span>'; }).join("");
     var flags = [];
-    if (mods.vip) flags.push('<span class="pr-flag pr-flag-vip">VIP +50% XP</span>');
-    if (currentTab === "xp" && route.xpBoost) flags.push('<span class="pr-flag pr-flag-boost">Boosted XP +50%</span>');
-    if (currentTab === "loot" && route.lootBoost) flags.push('<span class="pr-flag pr-flag-boost">Loot boost +50%</span>');
+    if (mods.vip) flags.push('<span class="pr-flag pr-flag-vip">' + t("flag_vip") + '</span>');
+    if (currentTab === "xp" && route.xpBoost) flags.push('<span class="pr-flag pr-flag-boost">' + t("flag_boost_xp") + '</span>');
+    if (currentTab === "loot" && route.lootBoost) flags.push('<span class="pr-flag pr-flag-boost">' + t("flag_boost_loot") + '</span>');
     if (mods.clan && route.clanMult > 1) flags.push('<span class="pr-flag pr-flag-clan">' + esc(mods.clan) +
       ' R' + mods.clanRank + ' +' + Math.round((route.clanMult - 1) * 100) + '%</span>');
-    if (currentTab === "xp" && route.trainerBonusPct > 0) flags.push('<span class="pr-flag pr-flag-trainer">Trainer +' +
-      route.trainerBonusPct + '% XP</span>');
+    if (currentTab === "xp" && route.trainerBonusPct > 0) flags.push('<span class="pr-flag pr-flag-trainer">' +
+      t("flag_trainer", { n: route.trainerBonusPct }) + '</span>');
     hero.innerHTML =
       '<div class="pr-hero-ico">' + iconHtml({ spritePokeId: p.spritePokeId, pokeId: p.pokeId }) + '</div>' +
       '<div class="pr-hero-body">' +
@@ -686,7 +757,7 @@
         (flags.length ? '<div class="pr-badges">' + flags.join("") + '</div>' : '') +
       '</div>';
 
-    if (route.error) { body.innerHTML = '<div class="pr-empty">Could not match "' + esc(poke.name) + '" to a creature.</div>'; lastPokeKey = pokeKey(poke); return; }
+    if (route.error) { body.innerHTML = '<div class="pr-empty">' + t("err_no_match", { name: esc(poke.name) }) + '</div>'; lastPokeKey = pokeKey(poke); return; }
 
     var bandOf = function (s) { return s.fromLevel + (s.toLevel ? "–" + s.toLevel : "+"); };
     var section = function (label) { return '<div class="pr-section">' + label + '</div>'; };
@@ -696,10 +767,10 @@
     var html = "";
 
     // the best hunt at your current level (metrics at your current level)
-    html += section("Best match");
+    html += section(t("sec_best"));
     html += current.length
       ? current.map(function (s) { return card(s, { band: bandOf(s), current: true }); }).join("")
-      : '<div class="pr-empty">No suitable hunt at this level.</div>';
+      : '<div class="pr-empty">' + t("empty_no_hunt") + '</div>';
 
     // a click-to-expand section (collapsed state persisted in `collapsed[key]`)
     function collapsible(key, label, cards) {
@@ -714,11 +785,11 @@
     // leveling plan: best hunt for each band from the current level up to 150+
     // (skips bands already passed; each band shown at its own level)
     var planBands = route.steps.filter(function (s) { return s.current || s.fromLevel > poke.level; });
-    html += collapsible("plan", "Leveling plan",
+    html += collapsible("plan", t("sec_plan"),
       planBands.map(function (s) { return card(s, { band: bandOf(s), current: s.current }); }));
 
     // higher-level hunts that unlock above the current level (not on the optimal path)
-    html += collapsible("higher", "Higher-level hunts",
+    html += collapsible("higher", t("sec_higher"),
       (route.upcoming || []).map(function (s) { return card(s, { minLevel: s.minLevel }); }));
 
     body.innerHTML = html;
@@ -770,9 +841,9 @@
         btn.disabled = true; btn.textContent = "…";
         teleport(slug, name, area).then(function (res) {
           if (res && res.ok) return;             // modal closed on success
-          btn.textContent = "Failed"; btn.classList.add("pr-fail");
+          btn.textContent = t("failed"); btn.classList.add("pr-fail");
           console.warn("[Poke Hunt] teleport", res && res.error);
-          setTimeout(function () { btn.disabled = false; btn.textContent = "Teleport"; btn.classList.remove("pr-fail"); }, 1800);
+          setTimeout(function () { btn.disabled = false; btn.textContent = t("teleport"); btn.classList.remove("pr-fail"); }, 1800);
         });
       });
     });
@@ -783,21 +854,21 @@
 
   // Quality-on-capture odds by tier (game thresholds; bands sum to exactly 100%).
   var QUALITY_TIERS = [
-    { name: "Legendary", range: "1.7–1.8", chance: "0.96%", color: "#ff8c3c" },
-    { name: "Epic", range: "1.5–1.7", chance: "5%", color: "#f0c040" },
-    { name: "Rare", range: "1.3–1.5", chance: "20%", color: "#b06cff" },
-    { name: "Uncommon", range: "1.1–1.3", chance: "30%", color: "#7fd4ff" },
-    { name: "Common", range: "1.0–1.1", chance: "34.04%", color: "#63d873" },
-    { name: "Weak", range: "0.8–1.0", chance: "10%", color: "#9aa6b3" }
+    { key: "q_legendary", range: "1.7–1.8", chance: "0.96%", color: "#ff8c3c" },
+    { key: "q_epic", range: "1.5–1.7", chance: "5%", color: "#f0c040" },
+    { key: "q_rare", range: "1.3–1.5", chance: "20%", color: "#b06cff" },
+    { key: "q_uncommon", range: "1.1–1.3", chance: "30%", color: "#7fd4ff" },
+    { key: "q_common", range: "1.0–1.1", chance: "34.04%", color: "#63d873" },
+    { key: "q_weak", range: "0.8–1.0", chance: "10%", color: "#9aa6b3" }
   ];
   function qualityTipHtml() {
     var rows = QUALITY_TIERS.map(function (q) {
-      return '<tr><td><span class="pr-q-dot" style="background:' + q.color + '"></span>' + q.name + '</td>' +
+      return '<tr><td><span class="pr-q-dot" style="background:' + q.color + '"></span>' + t(q.key) + '</td>' +
         '<td class="pr-q-range">' + q.range + '</td><td class="pr-q-pct">' + q.chance + '</td></tr>';
     }).join("");
-    return '<div class="pr-tip-title">Quality on capture</div>' +
+    return '<div class="pr-tip-title">' + t("quality_title") + '</div>' +
       '<table class="pr-q-table">' + rows + '</table>' +
-      '<div class="pr-tip-note">Same odds for every capture. Perfect (1.800): 0.29%.</div>';
+      '<div class="pr-tip-note">' + t("quality_note") + '</div>';
   }
 
   // shared hover tooltip, positioned near the trigger (lives outside .pr-body so
@@ -829,20 +900,20 @@
   // level-band badge (icon sits flush-left); the best pick gets a ★ in the title.
   function captureCard(p, best, targetHunt) {
     var effCls = p.eff >= 2 ? "super" : p.eff === 1 ? "neutral" : p.eff > 0 ? "resist" : "none";
-    var effTxt = p.eff >= 2 ? "super-effective" : p.eff === 1 ? "neutral" : p.eff > 0 ? "resisted" : "no effect";
-    var hitsTxt = p.hits == null ? "can't damage" : p.hits + " hits";
+    var effTxt = p.eff >= 2 ? t("eff_super") : p.eff === 1 ? t("eff_neutral") : p.eff > 0 ? t("eff_resisted") : t("eff_none");
+    var hitsTxt = p.hits == null ? t("cant_damage") : t("hits", { n: p.hits });
     return '<div class="pr-card' + (best ? " pr-here" : "") + (p.canReach ? "" : " pr-up") + '">' +
       '<div class="pr-ico-wrap">' + iconHtml(p) + '</div>' +
       '<div class="pr-card-body">' +
         '<div class="pr-card-title">' + (best ? '<span class="pr-cap-star">★</span> ' : "") + esc(p.name) +
           ' <span class="pr-clv">Lv.' + p.level + '</span>' +
-          (p.canReach ? "" : ' <span class="pr-area pr-cap-under">underleveled</span>') + '</div>' +
+          (p.canReach ? "" : ' <span class="pr-area pr-cap-under">' + t("underleveled") + '</span>') + '</div>' +
         '<div class="pr-card-metrics"><span class="pr-metric-main">' + hitsTxt + '</span>' +
           typeChip(p.moveType) +
           '<span class="pr-eff pr-eff-' + effCls + '">' + effTxt + '</span></div>' +
       '</div>' +
       '<button class="pr-tp" data-id="' + esc(String(p.id)) + '" data-slug="' + esc(targetHunt.slug || "") +
-        '" data-name="' + esc(targetHunt.name) + '" data-area="' + esc(targetHunt.area || "") + '">Switch &amp; Go</button>' +
+        '" data-name="' + esc(targetHunt.name) + '" data-area="' + esc(targetHunt.area || "") + '">' + t("switch_go") + '</button>' +
     '</div>';
   }
 
@@ -851,7 +922,7 @@
     if (captureTarget == null) {
       body.innerHTML =
         '<div class="pr-cap-search">' +
-          '<input class="pr-cap-input" type="text" placeholder="Search a Pokémon to capture…" autocomplete="off" spellcheck="false">' +
+          '<input class="pr-cap-input" type="text" placeholder="' + t("search_ph") + '" autocomplete="off" spellcheck="false">' +
           '<div class="pr-cap-results"></div>' +
         '</div>';
       var input = body.querySelector(".pr-cap-input");
@@ -862,16 +933,16 @@
       });
       var renderResults = function () {
         var q = input.value.trim();
-        if (!q) { results.innerHTML = '<div class="pr-cap-hint">Start typing a Pokémon name to search.</div>'; return; }
+        if (!q) { results.innerHTML = '<div class="pr-cap-hint">' + t("search_hint") + '</div>'; return; }
         var items = engine.searchTargets(q, 30);
-        results.innerHTML = items.map(function (t) {
-          return '<button class="pr-cap-opt" data-id="' + t.pokeId + '">' +
-            '<span class="pr-cap-opt-ico">' + iconHtml(t) + '</span>' +
-            '<span class="pr-cap-opt-name">' + esc(t.name) + '</span>' +
-            '<span class="pr-cap-opt-lv">Lv.' + t.huntLevel + '</span>' +
-            '<span class="pr-cap-opt-types">' + typeChip(t.type1) + typeChip(t.type2) + '</span>' +
+        results.innerHTML = items.map(function (it) {
+          return '<button class="pr-cap-opt" data-id="' + it.pokeId + '">' +
+            '<span class="pr-cap-opt-ico">' + iconHtml(it) + '</span>' +
+            '<span class="pr-cap-opt-name">' + esc(it.name) + '</span>' +
+            '<span class="pr-cap-opt-lv">Lv.' + it.huntLevel + '</span>' +
+            '<span class="pr-cap-opt-types">' + typeChip(it.type1) + typeChip(it.type2) + '</span>' +
           '</button>';
-        }).join("") || '<div class="pr-cap-none">No match</div>';
+        }).join("") || '<div class="pr-cap-none">' + t("search_none") + '</div>';
         results.querySelectorAll(".pr-cap-opt").forEach(function (opt) {
           opt.addEventListener("click", function () { captureTarget = +opt.getAttribute("data-id"); render(); });
         });
@@ -885,38 +956,38 @@
     // target chosen -> target card + ranked owned Pokemon (same card style as tabs)
     var r = engine.captureRanking(captureTarget, ownedPokes);
     if (!r.target) { captureTarget = null; renderCapture(body); return; }
-    var t = r.target;
+    var tg = r.target;
 
     var targetCard = '<div class="pr-cap-target">' +
-      '<div class="pr-cap-target-ico">' + iconHtml(t) + '</div>' +
+      '<div class="pr-cap-target-ico">' + iconHtml(tg) + '</div>' +
       '<div class="pr-cap-target-body">' +
-        '<div class="pr-cap-target-top"><span class="pr-cap-target-name">' + esc(t.name) + '</span>' +
-          '<span class="pr-hero-lv">Lv.' + t.huntLevel + '</span>' +
-          '<span class="pr-info" tabindex="0" role="button" aria-label="Quality odds">Quality ⓘ</span></div>' +
-        '<div class="pr-hero-types">' + typeChip(t.type1) + typeChip(t.type2) + '</div>' +
+        '<div class="pr-cap-target-top"><span class="pr-cap-target-name">' + esc(tg.name) + '</span>' +
+          '<span class="pr-hero-lv">Lv.' + tg.huntLevel + '</span>' +
+          '<span class="pr-info" tabindex="0" role="button" aria-label="' + t("quality_title") + '">' + t("cap_quality") + '</span></div>' +
+        '<div class="pr-hero-types">' + typeChip(tg.type1) + typeChip(tg.type2) + '</div>' +
       '</div>' +
-      '<button class="pr-cap-change" type="button">Change</button>' +
+      '<button class="pr-cap-change" type="button">' + t("cap_change") + '</button>' +
     '</div>';
 
     var listHtml;
     if (!ownedPokes.length) {
-      listHtml = '<div class="pr-empty">Your Pokémon list hasn\'t loaded yet — open your team once in-game.</div>';
+      listHtml = '<div class="pr-empty">' + t("cap_not_loaded") + '</div>';
     } else if (!r.list.length) {
-      listHtml = '<div class="pr-empty">None of your Pokémon can damage this target.</div>';
+      listHtml = '<div class="pr-empty">' + t("cap_none_damage") + '</div>';
     } else {
       // split: good picks (<=10 hits) shown; the rest tucked into a collapsed section
       var easy = r.list.filter(function (p) { return p.hits != null && p.hits <= 10; });
       var hard = r.list.filter(function (p) { return !(p.hits != null && p.hits <= 10); });
       if (!easy.length) { easy = hard.slice(0, 1); hard = hard.slice(1); }  // always show at least the top pick
-      listHtml = '<div class="pr-section">Fastest catch</div>' +
-        easy.map(function (p, i) { return captureCard(p, i === 0, t); }).join("");
+      listHtml = '<div class="pr-section">' + t("cap_fastest") + '</div>' +
+        easy.map(function (p, i) { return captureCard(p, i === 0, tg); }).join("");
       if (hard.length) {
         var open = !collapsed.capHard;
         listHtml += '<button class="pr-collapse" type="button" data-key="capHard" aria-expanded="' + open + '">' +
-          '<span class="pr-collapse-arrow">' + (open ? "▾" : "▸") + '</span> Takes too long (10+ hits)' +
+          '<span class="pr-collapse-arrow">' + (open ? "▾" : "▸") + '</span> ' + t("cap_slow") +
           '<span class="pr-collapse-n">' + hard.length + '</span></button>' +
           '<div class="pr-below' + (open ? "" : " pr-collapsed") + '" data-key="capHard">' +
-            hard.map(function (p) { return captureCard(p, false, t); }).join("") + '</div>';
+            hard.map(function (p) { return captureCard(p, false, tg); }).join("") + '</div>';
       }
     }
 
@@ -940,12 +1011,12 @@
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-id"), slug = btn.getAttribute("data-slug");
         var name = btn.getAttribute("data-name"), area = btn.getAttribute("data-area");
-        if (!slug) { btn.textContent = "No hunt"; return; }
+        if (!slug) { btn.textContent = t("no_hunt"); return; }
         btn.disabled = true; btn.textContent = "…";
         switchAndGo(id, slug, name, area, btn).then(function (res) {
           if (res && res.ok) return;   // modal closed on success
-          btn.textContent = "Failed"; btn.classList.add("pr-fail");
-          setTimeout(function () { btn.disabled = false; btn.innerHTML = "Switch &amp; Go"; btn.classList.remove("pr-fail"); }, 1800);
+          btn.textContent = t("failed"); btn.classList.add("pr-fail");
+          setTimeout(function () { btn.disabled = false; btn.innerHTML = t("switch_go"); btn.classList.remove("pr-fail"); }, 1800);
         });
       });
     });
@@ -959,7 +1030,7 @@
     return '<div class="pr-card">' +
       '<button class="pr-fav' + (fav ? " on" : "") + '" data-slug="' + esc(p.slug) +
         '" data-name="' + esc(p.name) + '" data-area="' + esc(p.area || "") + '" title="' +
-        (fav ? "Remove from favorites" : "Add to favorites") + '">' + star + '</button>' +
+        (fav ? t("fav_remove") : t("fav_add")) + '">' + star + '</button>' +
       '<div class="pr-ico-wrap">' + iconHtml(info) + '</div>' +
       '<div class="pr-card-body">' +
         '<div class="pr-card-title">' + esc(p.name) +
@@ -967,19 +1038,19 @@
           (p.area ? ' <span class="pr-area">' + esc(p.area) + '</span>' : '') + '</div>' +
       '</div>' +
       '<button class="pr-tp" data-slug="' + esc(p.slug) + '" data-name="' + esc(p.name) +
-        '" data-area="' + esc(p.area || "") + '">Teleport</button>' +
+        '" data-area="' + esc(p.area || "") + '">' + t("teleport") + '</button>' +
     '</div>';
   }
 
   function renderPlaces(body) {
     var html = places.favorites.length
       ? places.favorites.map(function (p) { return placeCard(p, true); }).join("")
-      : '<div class="pr-empty">Teleport somewhere, then ★ it to pin it here.</div>';
+      : '<div class="pr-empty">' + t("places_empty") + '</div>';
 
     if (places.recent.length) {
       var open = !collapsed.recentPlaces;
       html += '<button class="pr-collapse" type="button" data-key="recentPlaces" aria-expanded="' + open + '">' +
-        '<span class="pr-collapse-arrow">' + (open ? "▾" : "▸") + '</span> Recent' +
+        '<span class="pr-collapse-arrow">' + (open ? "▾" : "▸") + '</span> ' + t("recent") +
         '<span class="pr-collapse-n">' + places.recent.length + '</span></button>' +
         '<div class="pr-below' + (open ? "" : " pr-collapsed") + '" data-key="recentPlaces">' +
           places.recent.map(function (p) { return placeCard(p, false); }).join("") + '</div>';
@@ -1012,8 +1083,8 @@
         btn.disabled = true; btn.textContent = "…";
         teleport(slug, name, area).then(function (res) {
           if (res && res.ok) return;
-          btn.textContent = "Failed"; btn.classList.add("pr-fail");
-          setTimeout(function () { btn.disabled = false; btn.textContent = "Teleport"; btn.classList.remove("pr-fail"); }, 1800);
+          btn.textContent = t("failed"); btn.classList.add("pr-fail");
+          setTimeout(function () { btn.disabled = false; btn.textContent = t("teleport"); btn.classList.remove("pr-fail"); }, 1800);
         });
       });
     });
