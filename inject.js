@@ -32,6 +32,14 @@
     else if (msg.type === "boosts" && Array.isArray(msg.boosts)) post("boosts", { boosts: msg.boosts });
   }
 
+  // outgoing frames: report enter-hunt so the content script can track any hunt entry
+  function observeOutgoing(raw) {
+    if (typeof raw !== "string" || raw.indexOf("enter-hunt") === -1) return;
+    var msg;
+    try { msg = JSON.parse(raw); } catch (e) { return; }
+    if (msg && msg.type === "enter-hunt" && msg.slug) post("enter-hunt", { slug: msg.slug });
+  }
+
   function WrappedWS(url, protocols) {
     var ws = protocols === undefined ? new NativeWS(url) : new NativeWS(url, protocols);
     // only track the game socket (its URL carries a token + ws shard)
@@ -39,6 +47,13 @@
       liveSocket = ws;
       ws.addEventListener("message", function (ev) { handleFrame(ev.data); });
       ws.addEventListener("close", function () { if (liveSocket === ws) liveSocket = null; });
+      // observe the game's OWN outgoing frames so we can track hunt entries made
+      // through the game's map (not just our buttons)
+      var nativeSend = ws.send;
+      ws.send = function (data) {
+        try { observeOutgoing(data); } catch (e) { /* ignore */ }
+        return nativeSend.apply(ws, arguments);
+      };
       post("socket", { ready: true });
     }
     return ws;

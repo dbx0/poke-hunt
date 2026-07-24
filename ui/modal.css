@@ -314,6 +314,14 @@
 
 /* capture suggestion rows reuse the .pr-card style */
 .pr-cap-star { color: #ffd35a; }
+
+/* Places: favorite star toggle */
+.pr-fav {
+  all: unset; cursor: pointer; flex: 0 0 auto; width: 26px; text-align: center;
+  font-size: 16px; color: #6f6790; transition: color .12s, transform .1s;
+}
+.pr-fav:hover { color: #ffd35a; transform: scale(1.15); }
+.pr-fav.on { color: #ffd35a; }
 .pr-cap-under { color: #e0a24a; font-weight: 700; }
 /* effectiveness badges */
 .pr-eff {

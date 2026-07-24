@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Poke Hunt",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Calculate the best hunting routes on Poke Idle World",
   "browser_specific_settings": {
     "gecko": {
@@ -12,6 +12,7 @@
       }
     }
   },
+  "permissions": ["storage"],
   "host_permissions": ["https://poke-hunt.com/*"],
   "icons": {
     "16": "assets/gengar16.png",

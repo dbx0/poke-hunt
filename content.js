@@ -17,10 +17,49 @@
   var vipOverride = null;      // user toggle: null = auto, true/false = forced
   var dataVersion = "";        // bundled data version (from data/meta.json)
   var activeBoosts = {};       // boost key -> until (ms epoch)
-  var collapsed = { plan: true, higher: true, capHard: true };  // collapse state per section
+  var collapsed = { plan: true, higher: true, capHard: true, recentPlaces: false };  // collapse state per section
   var ownedPokes = [];         // full owned-Pokemon list from the WS (for Capture)
   var ownedSig = "";           // signature of ownedPokes to detect real changes
   var captureTarget = null;    // selected capture target (pokeId) or null
+
+  // ---------- Places (favorites + recent teleports), persisted in chrome.storage ----------
+  var places = { favorites: [], recent: [] };
+  var RECENT_MAX = 10;   // keep only the last 10 non-favorited teleports
+  function storeGet(keys) { return new Promise(function (res) { try { chrome.storage.local.get(keys, function (v) { res(v || {}); }); } catch (e) { res({}); } }); }
+  function storeSet(obj) { try { chrome.storage.local.set(obj); } catch (e) {} }
+  async function loadPlaces() {
+    var v = await storeGet(["favorites", "recent"]);
+    places.favorites = Array.isArray(v.favorites) ? v.favorites : [];
+    places.recent = Array.isArray(v.recent) ? v.recent : [];
+  }
+  function isFavorite(slug) { return places.favorites.some(function (p) { return p.slug === slug; }); }
+  function addFavorite(p) {
+    if (isFavorite(p.slug)) return;
+    places.favorites = places.favorites.concat([{ slug: p.slug, name: p.name, area: p.area }]);
+    places.recent = places.recent.filter(function (r) { return r.slug !== p.slug; }); // move out of recent
+    storeSet({ favorites: places.favorites, recent: places.recent });
+  }
+  function removeFavorite(slug) {
+    places.favorites = places.favorites.filter(function (p) { return p.slug !== slug; });
+    storeSet({ favorites: places.favorites });
+  }
+  function recordTeleport(slug, name, area) {
+    if (isFavorite(slug)) return;   // favorites are pinned separately, not in recent
+    places.recent = [{ slug: slug, name: name, area: area, at: Date.now() }]
+      .concat(places.recent.filter(function (p) { return p.slug !== slug; }))
+      .slice(0, RECENT_MAX);
+    storeSet({ recent: places.recent });
+  }
+  // single entry point for "a hunt was entered" (our buttons OR the game's map).
+  // Idempotent: recent dedupes, and the favorite toast shows at most once per slug per session.
+  var toastShown = {};
+  function onEnteredHunt(slug, name, area) {
+    if (!slug) return;
+    var wasFav = isFavorite(slug);
+    recordTeleport(slug, name, area);
+    if (!wasFav && !toastShown[slug]) { toastShown[slug] = true; showFavToast({ slug: slug, name: name, area: area }); }
+    if (isOpen() && currentTab === "places") render();   // live-update the Places tab
+  }
 
   // ---------- update check ----------
   var UPDATE_URL = "https://poke-hunt.com/version.json";
@@ -155,6 +194,10 @@
     if (d.kind === "socket") { socketReady = true; }
     else if (d.kind === "pokes") { cacheWsPokes(d.list); }
     else if (d.kind === "boosts") { cacheBoosts(d.boosts); }
+    else if (d.kind === "enter-hunt") {                 // any hunt entry (game map or our buttons)
+      var info = engine && engine.lookupHunt(d.slug);
+      if (info) onEnteredHunt(info.slug, info.name, info.area);
+    }
     else if (d.kind === "send-result") {
       var r = pending.get(d.requestId);
       if (r) { pending.delete(d.requestId); r(d); }
@@ -258,7 +301,36 @@
     if (!marker) return { ok: false, error: "marker-not-found" };
     marker.click();
     close();                                                    // hand focus back to the game
+    onEnteredHunt(slug, name, area);                            // record + offer to favorite
     return { ok: true };
+  }
+
+  // page-level toast (the modal is closed after teleport) offering to save a favorite
+  function showFavToast(place) {
+    var prev = document.getElementById("poke-hunt-fav-toast");
+    if (prev) prev.remove();
+    var t = document.createElement("div");
+    t.id = "poke-hunt-fav-toast";
+    t.style.cssText = "position:fixed;bottom:20px;right:20px;z-index:2147483001;display:flex;align-items:center;gap:10px;max-width:340px;" +
+      "background:#000;color:#fff;border:1px solid #2a2140;border-radius:8px;padding:11px 13px;" +
+      "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:13px;box-shadow:0 12px 34px rgba(0,0,0,.6)";
+    var logo = document.createElement("img");
+    logo.src = url("assets/gengar-logo.png");
+    logo.style.cssText = "flex:0 0 auto;width:26px;height:26px;object-fit:contain";
+    var msg = document.createElement("span");
+    msg.style.cssText = "flex:1 1 auto";
+    msg.innerHTML = "Add <b>" + esc(place.name) + "</b> to favorites?";
+    var add = document.createElement("button");
+    add.textContent = "★ Add";
+    add.style.cssText = "cursor:pointer;border:none;border-radius:8px;background:#7b3ff2;color:#fff;font-weight:700;padding:6px 11px;font-size:12px;white-space:nowrap";
+    add.onclick = function () { addFavorite(place); t.remove(); if (isOpen() && currentTab === "places") render(); };
+    var no = document.createElement("button");
+    no.textContent = "✕";
+    no.style.cssText = "cursor:pointer;border:none;background:transparent;color:#b9a7e6;font-size:14px";
+    no.onclick = function () { t.remove(); };
+    t.appendChild(logo); t.appendChild(msg); t.appendChild(add); t.appendChild(no);
+    document.body.appendChild(t);
+    setTimeout(function () { if (t.parentNode) t.remove(); }, 7000);
   }
 
   // ---------- DOM: active poke ----------
@@ -300,6 +372,7 @@
     ".pr-collapse{cursor:pointer;display:flex;align-items:center;gap:8px;margin-top:4px;padding:9px 11px;border-radius:11px;font-size:12px;font-weight:800;color:#b98cff;border:1px solid #7b3ff233;background:#7b3ff20d}" +
     ".pr-collapse-arrow{font-size:10px;width:10px}.pr-collapse-n{margin-left:auto;font-size:11px;font-weight:700;color:#8a829f;background:#ffffff12;padding:1px 8px;border-radius:999px}" +
     ".pr-below{display:flex;flex-direction:column;gap:9px;margin-top:9px}.pr-below.pr-collapsed{display:none}" +
+    ".pr-fav{cursor:pointer;flex:0 0 auto;width:26px;text-align:center;font-size:16px;color:#6f6790;background:none;border:none}.pr-fav.on{color:#ffd35a}" +
     ".pr-body{overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;scrollbar-color:#7b3ff2 transparent}" +
     ".pr-body::-webkit-scrollbar{width:12px}.pr-body::-webkit-scrollbar-thumb{background:#7b3ff2;border-radius:999px;border:3px solid #000;background-clip:padding-box}" +
     ".pr-empty{padding:30px;text-align:center;color:#9a90b8}" +
@@ -323,7 +396,7 @@
     if (!isOpen()) return;
     // the Capture tab never re-renders from DOM mutations (chat, etc.) — it only
     // refreshes when the owned-Pokemon list actually changes (see cacheWsPokes)
-    if (currentTab === "capture") return;
+    if (currentTab === "capture" || currentTab === "places") return;
     if (pokeKey(readActivePoke()) !== lastPokeKey) render();
   }
 
@@ -354,6 +427,7 @@
           '<button class="pr-tab" data-tab="xp">XP farm</button>' +
           '<button class="pr-tab" data-tab="loot">Loot farm</button>' +
           '<button class="pr-tab" data-tab="capture">Capture</button>' +
+          '<button class="pr-tab" data-tab="places">Favorites</button>' +
         '</div>' +
         '<div class="pr-body"></div>' +
         '<footer class="pr-foot">' +
@@ -460,6 +534,7 @@
 
     // Capture tab has its own layout (search + target + owned-Pokemon ranking)
     if (currentTab === "capture") { hero.innerHTML = ""; renderCapture(body); return; }
+    if (currentTab === "places") { hero.innerHTML = ""; renderPlaces(body); return; }
 
     var poke = readActivePoke();
     currentPoke = poke;
@@ -757,6 +832,74 @@
     });
   }
 
+  // ---------- Places tab ----------
+  // a saved/recent place card, same .pr-card style as the other tabs
+  function placeCard(p, fav) {
+    var info = engine.lookupHunt(p.slug) || p;
+    var star = fav ? "★" : "☆";
+    return '<div class="pr-card">' +
+      '<button class="pr-fav' + (fav ? " on" : "") + '" data-slug="' + esc(p.slug) +
+        '" data-name="' + esc(p.name) + '" data-area="' + esc(p.area || "") + '" title="' +
+        (fav ? "Remove from favorites" : "Add to favorites") + '">' + star + '</button>' +
+      '<div class="pr-ico-wrap">' + iconHtml(info) + '</div>' +
+      '<div class="pr-card-body">' +
+        '<div class="pr-card-title">' + esc(p.name) +
+          (info.huntLevel ? ' <span class="pr-clv">Lv.' + info.huntLevel + '</span>' : '') +
+          (p.area ? ' <span class="pr-area">' + esc(p.area) + '</span>' : '') + '</div>' +
+      '</div>' +
+      '<button class="pr-tp" data-slug="' + esc(p.slug) + '" data-name="' + esc(p.name) +
+        '" data-area="' + esc(p.area || "") + '">Teleport</button>' +
+    '</div>';
+  }
+
+  function renderPlaces(body) {
+    var html = places.favorites.length
+      ? places.favorites.map(function (p) { return placeCard(p, true); }).join("")
+      : '<div class="pr-empty">Teleport somewhere, then ★ it to pin it here.</div>';
+
+    if (places.recent.length) {
+      var open = !collapsed.recentPlaces;
+      html += '<button class="pr-collapse" type="button" data-key="recentPlaces" aria-expanded="' + open + '">' +
+        '<span class="pr-collapse-arrow">' + (open ? "▾" : "▸") + '</span> Recent' +
+        '<span class="pr-collapse-n">' + places.recent.length + '</span></button>' +
+        '<div class="pr-below' + (open ? "" : " pr-collapsed") + '" data-key="recentPlaces">' +
+          places.recent.map(function (p) { return placeCard(p, false); }).join("") + '</div>';
+    }
+
+    body.innerHTML = html;
+
+    body.querySelectorAll("img.pr-ico").forEach(function (img) {
+      img.addEventListener("error", function () { img.classList.add("pr-ico-off"); });
+    });
+    var rc = body.querySelector('.pr-collapse[data-key="recentPlaces"]');
+    if (rc) rc.addEventListener("click", function () {
+      collapsed.recentPlaces = !collapsed.recentPlaces;
+      var o = !collapsed.recentPlaces;
+      body.querySelector('.pr-below[data-key="recentPlaces"]').classList.toggle("pr-collapsed", !o);
+      rc.setAttribute("aria-expanded", o ? "true" : "false");
+      rc.querySelector(".pr-collapse-arrow").textContent = o ? "▾" : "▸";
+    });
+    body.querySelectorAll(".pr-fav").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var slug = btn.getAttribute("data-slug");
+        if (isFavorite(slug)) removeFavorite(slug);
+        else addFavorite({ slug: slug, name: btn.getAttribute("data-name"), area: btn.getAttribute("data-area") });
+        render();   // reflect the change (favorites/recent shift)
+      });
+    });
+    body.querySelectorAll(".pr-tp").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var slug = btn.getAttribute("data-slug"), name = btn.getAttribute("data-name"), area = btn.getAttribute("data-area");
+        btn.disabled = true; btn.textContent = "…";
+        teleport(slug, name, area).then(function (res) {
+          if (res && res.ok) return;
+          btn.textContent = "Failed"; btn.classList.add("pr-fail");
+          setTimeout(function () { btn.disabled = false; btn.textContent = "Teleport"; btn.classList.remove("pr-fail"); }, 1800);
+        });
+      });
+    });
+  }
+
   function open() { ensureModal(); host.style.display = "block"; renderUpdateBanner(); render({ center: true }); }
   function close() { hideTip(); if (host) host.style.display = "none"; }
   function toggle() { isOpen() ? close() : open(); }
@@ -788,7 +931,7 @@
   }
 
   // ---------- boot ----------
-  Promise.all([loadData(), loadAccount()]).then(function () {
+  Promise.all([loadData(), loadAccount(), loadPlaces()]).then(function () {
     injectButton();
     checkForUpdate();
     setTimeout(requestState, 800);

@@ -439,8 +439,17 @@
       };
     }
 
+    // display info for a hunt by slug (for saved/recent Places)
+    function lookupHunt(slug) {
+      var h = huntBySlug.get(slug);
+      if (!h) return null;
+      var c = h.creature;
+      return { slug: h.slug, name: h.name, area: h.area, minLevel: h.minLevel,
+               huntLevel: c.huntLevel, spritePokeId: spriteIdOf(c), type1: c.type1, type2: c.type2 };
+    }
+
     return { computeRoute: computeRoute, rankNow: rankNow, huntCount: huntList.length,
-             searchTargets: searchTargets, captureRanking: captureRanking,
+             searchTargets: searchTargets, captureRanking: captureRanking, lookupHunt: lookupHunt,
              _internal: { statAt: statAt, enemyStats: enemyStats, enemyTotalHp: enemyTotalHp,
                           effectiveness: effectiveness, killsPerHour: killsPerHour, buildHunts: buildHunts } };
   }
