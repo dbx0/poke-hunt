@@ -71,7 +71,8 @@
     for (var i = 0; i < 3; i++) { var x = +A[i] || 0, y = +B[i] || 0; if (x !== y) return x - y; }
     return 0;
   }
-  // runs once per tab load (called at boot); shows the banner if a newer version exists
+  // checks on tab load and then every 3h while the tab stays open
+  var UPDATE_INTERVAL_MS = 3 * 3600 * 1000;
   async function checkForUpdate() {
     try {
       var r = await fetch(UPDATE_URL, { cache: "no-store" });
@@ -934,6 +935,10 @@
   Promise.all([loadData(), loadAccount(), loadPlaces()]).then(function () {
     injectButton();
     checkForUpdate();
+    var updTimer = setInterval(function () {
+      if (!contextAlive()) { clearInterval(updTimer); return; }
+      checkForUpdate();
+    }, UPDATE_INTERVAL_MS);
     setTimeout(requestState, 800);
     setTimeout(requestState, 2500);
     var mo = new MutationObserver(function () {
