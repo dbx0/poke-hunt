@@ -184,8 +184,16 @@
     var eStats = enemyStats(c);
     var pStats = playerStats(poke, playerCreature);
     var dmg = bestMoveDamage(playerCreature, pStats, c, eStats, poke.level, data.typechart, mods.clanMult);
-    if (dmg <= 0) return { xpPerHour: 0, moneyPerHour: 0, kph: 0, hits: Infinity, dmg: 0 };
+    if (dmg <= 0) return { xpPerHour: 0, moneyPerHour: 0, kph: 0, hits: Infinity, dmg: 0, survivesHits: 0, survivable: false };
     var hits = Math.max(1, enemyTotalHp(c) / dmg);
+    // incoming: the enemy's best move vs the player's defenses (roles swapped, wild
+    // enemy has no clan). Player total HP = hp stat * HP_TOTAL_MULT (matches the game;
+    // enemies also get HP_HUNT_MULT). survivable = you outlast one enemy's kill time.
+    var eDmg = bestMoveDamage(c, eStats, { type1: playerCreature.type1, type2: playerCreature.type2 },
+                              pStats, c.huntLevel, data.typechart, 1);
+    var playerHp = Math.max(1, pStats.hp * HP_TOTAL_MULT);
+    var survivesHits = eDmg > 0 ? playerHp / eDmg : Infinity;
+    var survivable = survivesHits >= hits;
     var kph = killsPerHour(data.speeds, c.pokeId, hits);
     // XP bonuses stack ADDITIVELY (dev note: "soma… em vez de multiplicar por cima")
     var xpMult = 1 + (mods.vip ? VIP_BONUS : 0) + (mods.xpBoost ? BOOST_BONUS : 0) +
@@ -196,7 +204,9 @@
       moneyPerHour: kph * expectedLootValue(c, data.itemPrices || {}) * moneyMult,
       kph: kph,
       hits: hits,
-      dmg: dmg
+      dmg: dmg,
+      survivesHits: survivesHits,
+      survivable: survivable
     };
   }
 
@@ -249,6 +259,7 @@
         if (hunt.minLevel > poke.level) continue;          // not unlocked yet
         var m = huntMetrics(hunt, poke, playerCreature, data, mods);
         if (m[metricKey] <= 0) continue;
+        if (!m.survivable) continue;                       // skip hunts you'd faint in
         if (!best || m[metricKey] > best.metrics[metricKey]) best = { hunt: hunt, metrics: m };
       }
       return best;
@@ -263,7 +274,9 @@
         xpPerHour: Math.round(m.xpPerHour),
         moneyPerHour: Math.round(m.moneyPerHour),
         killsPerHour: Math.round(m.kph),
-        hitsToKill: +m.hits.toFixed(2)
+        hitsToKill: +m.hits.toFixed(2),
+        survivesHits: m.survivesHits === Infinity ? null : +m.survivesHits.toFixed(2),
+        survivable: m.survivable
       };
     }
 
@@ -325,7 +338,7 @@
           var m = huntMetrics(h, probe, playerCreature, data, mods);
           var st = step(h, m); st.minLevel = h.minLevel; return st;
         })
-        .filter(function (r) { return r[metricKey] > 0; })
+        .filter(function (r) { return r[metricKey] > 0 && r.survivable; })
         .sort(function (a, b) { return a.minLevel - b.minLevel || b[metricKey] - a[metricKey]; });
 
       return { species: playerCreature.name, level: poke.level, metric: opts.metric === "loot" ? "loot" : "xp",
@@ -351,7 +364,7 @@
           var m = huntMetrics(h, poke, playerCreature, data, mods);
           var st = step(h, m); st.minLevel = h.minLevel; return st;
         })
-        .filter(function (r) { return r[metricKey] > 0; })
+        .filter(function (r) { return r[metricKey] > 0 && r.survivable; })
         .sort(function (a, b) { return b[metricKey] - a[metricKey]; });
     }
 
