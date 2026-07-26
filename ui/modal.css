@@ -390,7 +390,14 @@
   width: min(430px, 94%); max-height: 84%; overflow-y: auto;
   background: #000; border: 1px solid #2a2140; border-radius: 16px;
   padding: 18px 20px 16px; box-shadow: 0 24px 70px rgba(0,0,0,.7);
+  scrollbar-width: thin; scrollbar-color: #7b3ff2 transparent;
 }
+.pr-wn-box::-webkit-scrollbar { width: 8px; }
+.pr-wn-box::-webkit-scrollbar-track { background: transparent; margin: 6px 0; }
+.pr-wn-box::-webkit-scrollbar-thumb {
+  background: #4a3a6e; border-radius: 8px; border: 2px solid transparent; background-clip: content-box;
+}
+.pr-wn-box::-webkit-scrollbar-thumb:hover { background: #7b3ff2; background-clip: content-box; }
 .pr-wn-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .pr-wn-logo { height: 26px; width: auto; object-fit: contain; display: block; }
 .pr-wn-ver {
@@ -401,6 +408,13 @@
 .pr-wn-feature { font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 11px; }
 .pr-wn-list { margin: 0 0 16px; padding-left: 18px; color: #cfc6e6; font-size: 13px; line-height: 1.6; }
 .pr-wn-list li { margin-bottom: 7px; }
+.pr-wn-fixes-h {
+  font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+  color: #8a7fa6; margin: 2px 0 6px; padding-top: 12px; border-top: 1px solid #2c2540;
+}
+.pr-wn-fixes { margin: 0 0 16px; padding-left: 16px; color: #9d94b5; font-size: 11px; line-height: 1.5; }
+.pr-wn-fixes li { margin-bottom: 5px; }
+.pr-wn-fixv { font-weight: 800; color: #b98cff; margin-right: 3px; }
 .pr-wn-close {
   cursor: pointer; display: block; width: 100%; padding: 10px; border-radius: 11px;
   font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;

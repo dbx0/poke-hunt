@@ -42,17 +42,11 @@
   var hasUpdate = false;                   // extension version changed since last opened -> nudge the dock button
   var justUpdated = false;                 // set on the first open after an update -> show the news banner this session
 
-  // Per-version feature notes shown in the "What's new" modal. Add an entry when a
-  // release ships user-facing features; versions without one fall back to a generic line.
+  // "What's new" content, keyed by the minor line's base version (major.minor.0).
+  // The headline feature (title + points) stays fixed for the whole line; each patch
+  // release (0.8.1, 0.8.2, …) appends a one-liner to `fixes`, shown smaller below the
+  // feature. The next feature bump (0.9.0) adds a fresh entry, resetting the fix list.
   var CHANGELOG = {
-    "0.8.1": {
-      en: { title: "Pokédex auto-teleport unsticks", points: [
-        "Auto-teleport no longer gets stuck at 100 kills when a species can't be caught: if auto-catch is off or you're out of the selected catch ball, it moves you on to the next species that still needs kills.",
-        "If auto-catch is on and you still have balls, it waits as before, so an unlucky capture never teleports you away." ] },
-      pt: { title: "Auto-teleporte da Pokédex não trava mais", points: [
-        "O auto-teleporte não trava mais nos 100 kills quando uma espécie não pode ser capturada: se a autocaptura estiver desligada ou você estiver sem a ball selecionada, ele te leva para a próxima espécie que ainda precisa de kills.",
-        "Se a autocaptura estiver ligada e você ainda tiver balls, ele espera como antes, então uma captura azarada nunca te teleporta embora." ] }
-    },
     "0.8.0": {
       en: { title: "Pokédex tab", points: [
         "A new tab lists every Pokémon you still need to finish for the Pokédex (100 kills and a capture), sorted from easiest to hardest, each with a one-click teleport.",
@@ -61,14 +55,26 @@
       pt: { title: "Aba Pokédex", points: [
         "Uma nova aba lista todos os Pokémon que faltam para completar a Pokédex (100 kills e uma captura), do mais fácil ao mais difícil, cada um com teleporte em um clique.",
         "Auto-teleport te leva para o próximo assim que uma espécie é concluída, e Auto-escolha invoca o melhor Pokémon da sua party para o alvo.",
-        "Caçar tudo estende a lista além das espécies que a Pokédex do jogo acompanha." ] }
+        "Caçar tudo estende a lista além das espécies que a Pokédex do jogo acompanha." ] },
+      fixes: [
+        { v: "0.8.1",
+          en: "Pokédex auto-teleport no longer gets stuck at 100 kills when a species can't be caught: if auto-catch is off or you're out of the selected catch ball, it moves on to the next species that still needs kills.",
+          pt: "O auto-teleporte da Pokédex não trava mais nos 100 kills quando uma espécie não pode ser capturada: se a autocaptura estiver desligada ou você estiver sem a ball selecionada, ele vai para a próxima espécie que ainda precisa de kills." }
+      ]
     }
   };
+  // resolve a full version ("0.8.1") to its minor-line base key ("0.8.0")
+  function changelogBaseKey(ver) {
+    var m = /^(\d+)\.(\d+)\./.exec(ver || "");
+    return m ? m[1] + "." + m[2] + ".0" : ver;
+  }
   function changelogEntry() {
     var cur = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "";
-    var e = CHANGELOG[cur];
-    if (!e) return { title: t("wn_generic"), points: [] };
-    return e[currentLang()] || e.en;
+    var e = CHANGELOG[changelogBaseKey(cur)];
+    if (!e) return { title: t("wn_generic"), points: [], fixes: [] };
+    var lang = currentLang(), loc = e[lang] || e.en;
+    var fixes = (e.fixes || []).map(function (f) { return { v: f.v, text: f[lang] || f.en }; });
+    return { title: loc.title, points: loc.points, fixes: fixes };
   }
 
   // ---------- Places (favorites + recent teleports), persisted in chrome.storage ----------
@@ -235,7 +241,7 @@
       pdex_hunt_all_tip: "The game's Pokédex tracks {n} species. Turn on to also hunt the rest of the catchable Pokémon.They don't count toward Pokédex completion.",
       pdex_empty: "Pokédex complete! Nothing left to hunt.", pdex_todo_done: "All tracked species done. Turn on Hunt all for more.",
       pdex_loading: "Loading Pokédex…", pdex_load_fail: "Couldn't load your Pokédex. Make sure you're logged in.",
-      news_updated: "Updated to <b>v{v}</b>", news_whatsnew: "What's new", wn_close: "Got it", wn_generic: "Improvements and fixes.",
+      news_updated: "Updated to <b>v{v}</b>", news_whatsnew: "What's new", wn_close: "Got it", wn_generic: "Improvements and fixes.", wn_fixes: "Fixes since then",
       auto_label: "Auto level up",
       auto_tip: "Auto-teleports to the next best XP hunt as your Pokémon levels up.",
       cd_section: "Teleporting to next best match",
@@ -270,7 +276,7 @@
       pdex_hunt_all_tip: "A Pokédex do jogo cobre {n} espécies. Ative para também caçar o resto dos Pokémon capturáveis. Eles não contam para completar a Pokédex.",
       pdex_empty: "Pokédex completa! Nada para caçar.", pdex_todo_done: "Todas as espécies da Pokédex concluídas. Ative Hunt all para mais.",
       pdex_loading: "Carregando Pokédex…", pdex_load_fail: "Não foi possível carregar sua Pokédex. Confira se você está logado.",
-      news_updated: "Atualizado para <b>v{v}</b>", news_whatsnew: "Novidades", wn_close: "Entendi", wn_generic: "Melhorias e correções.",
+      news_updated: "Atualizado para <b>v{v}</b>", news_whatsnew: "Novidades", wn_close: "Entendi", wn_generic: "Melhorias e correções.", wn_fixes: "Correções desde então",
       auto_label: "Auto level up",
       auto_tip: "Teleporta automaticamente para o melhor hunt de XP conforme seu Pokémon sobe de level.",
       cd_section: "Teleportando para a próxima melhor escolha",
@@ -1477,6 +1483,12 @@
     var cur = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "";
     var entry = changelogEntry();
     var points = entry.points.map(function (l) { return '<li>' + esc(l) + '</li>'; }).join("");
+    var fixItems = (entry.fixes || []).map(function (f) {
+      return '<li><span class="pr-wn-fixv">v' + esc(f.v) + '</span> ' + esc(f.text) + '</li>';
+    }).join("");
+    var fixesHtml = fixItems
+      ? '<div class="pr-wn-fixes-h">' + t("wn_fixes") + '</div><ul class="pr-wn-fixes">' + fixItems + '</ul>'
+      : '';
     var ov = document.createElement("div");
     ov.className = "pr-wn";
     ov.innerHTML =
@@ -1488,6 +1500,7 @@
         '<div class="pr-wn-eyebrow">' + t("news_whatsnew") + '</div>' +
         '<div class="pr-wn-feature">' + esc(entry.title) + '</div>' +
         (points ? '<ul class="pr-wn-list">' + points + '</ul>' : '') +
+        fixesHtml +
         '<button class="pr-wn-close" type="button">' + t("wn_close") + '</button>' +
       '</div>';
     ov.addEventListener("click", function (e) { if (e.target === ov) ov.remove(); });
