@@ -178,22 +178,34 @@
   }
 
   // metrics for one hunt given the player's level/stats and account modifiers
-  function huntMetrics(hunt, poke, playerCreature, data, mods) {
-    mods = mods || {};
+  // incoming survivability: the enemy's best move vs the player's defenses (roles
+  // swapped, wild enemy has no clan). Player total HP = hp stat * HP_TOTAL_MULT
+  // (matches the game; enemies also get HP_HUNT_MULT). survivable = you outlast the
+  // time it takes to kill one enemy. Split out so the hot path can defer it.
+  function survivability(hunt, playerCreature, pStats, hits, typechart) {
     var c = hunt.creature;
-    var eStats = enemyStats(c);
-    var pStats = playerStats(poke, playerCreature);
-    var dmg = bestMoveDamage(playerCreature, pStats, c, eStats, poke.level, data.typechart, mods.clanMult);
-    if (dmg <= 0) return { xpPerHour: 0, moneyPerHour: 0, kph: 0, hits: Infinity, dmg: 0, survivesHits: 0, survivable: false };
-    var hits = Math.max(1, enemyTotalHp(c) / dmg);
-    // incoming: the enemy's best move vs the player's defenses (roles swapped, wild
-    // enemy has no clan). Player total HP = hp stat * HP_TOTAL_MULT (matches the game;
-    // enemies also get HP_HUNT_MULT). survivable = you outlast one enemy's kill time.
+    var eStats = hunt._eStats || enemyStats(c);
     var eDmg = bestMoveDamage(c, eStats, { type1: playerCreature.type1, type2: playerCreature.type2 },
-                              pStats, c.huntLevel, data.typechart, 1);
+                              pStats, c.huntLevel, typechart, 1);
     var playerHp = Math.max(1, pStats.hp * HP_TOTAL_MULT);
     var survivesHits = eDmg > 0 ? playerHp / eDmg : Infinity;
-    var survivable = survivesHits >= hits;
+    return { survivesHits: survivesHits, survivable: survivesHits >= hits };
+  }
+
+  function huntMetrics(hunt, poke, playerCreature, data, mods, pStatsIn, skipSurvive) {
+    mods = mods || {};
+    var c = hunt.creature;
+    var eStats = hunt._eStats || enemyStats(c);          // cached per creature
+    var eTotalHp = hunt._eTotalHp || enemyTotalHp(c);
+    var pStats = pStatsIn || playerStats(poke, playerCreature); // identical for all hunts at a level
+    var dmg = bestMoveDamage(playerCreature, pStats, c, eStats, poke.level, data.typechart, mods.clanMult);
+    if (dmg <= 0) return { xpPerHour: 0, moneyPerHour: 0, kph: 0, hits: Infinity, dmg: 0, survivesHits: 0, survivable: false, pStats: pStats };
+    var hits = Math.max(1, eTotalHp / dmg);
+    // survivability is the second-most expensive step; skip it on the hot bestAt scan
+    // (computed there only for the running leader) but keep it for direct callers.
+    var sv = skipSurvive ? { survivesHits: Infinity, survivable: true } : survivability(hunt, playerCreature, pStats, hits, data.typechart);
+    var survivesHits = sv.survivesHits;
+    var survivable = sv.survivable;
     var kph = killsPerHour(data.speeds, c.pokeId, hits);
     // XP bonuses stack ADDITIVELY (dev note: "soma… em vez de multiplicar por cima")
     var xpMult = 1 + (mods.vip ? VIP_BONUS : 0) + (mods.xpBoost ? BOOST_BONUS : 0) +
@@ -206,7 +218,8 @@
       hits: hits,
       dmg: dmg,
       survivesHits: survivesHits,
-      survivable: survivable
+      survivable: survivable,
+      pStats: pStats
     };
   }
 
@@ -219,7 +232,13 @@
     itemList.forEach(function (it) { if (it && it.name) data.itemPrices[String(it.name).trim().toLowerCase()] = it.npcPrice || 0; });
     var huntList = buildHunts(data.hunts, creatures, data.speeds);
     var huntBySlug = new Map();
-    huntList.forEach(function (h) { huntBySlug.set(h.slug, h); });
+    // enemy stats/HP depend only on the creature (not the player), so compute them
+    // once here instead of on every huntMetrics call across the level simulation.
+    huntList.forEach(function (h) {
+      h._eStats = enemyStats(h.creature);
+      h._eTotalHp = enemyTotalHp(h.creature);
+      huntBySlug.set(h.slug, h);
+    });
     var byName = new Map();
     var byId = new Map();
     creatures.forEach(function (c) { byName.set(normSlug(c.name), c); byId.set(c.pokeId, c); });
@@ -254,13 +273,18 @@
     // best hunt for a poke at a specific level (respecting unlock level), by metric
     function bestAt(poke, playerCreature, mods, metricKey) {
       var best = null;
+      var pStats = playerStats(poke, playerCreature);      // same for every hunt at this level
       for (var i = 0; i < huntList.length; i++) {
         var hunt = huntList[i];
         if (hunt.minLevel > poke.level) continue;          // not unlocked yet
-        var m = huntMetrics(hunt, poke, playerCreature, data, mods);
+        var m = huntMetrics(hunt, poke, playerCreature, data, mods, pStats, true); // defer survivability
         if (m[metricKey] <= 0) continue;
-        if (!m.survivable) continue;                       // skip hunts you'd faint in
-        if (!best || m[metricKey] > best.metrics[metricKey]) best = { hunt: hunt, metrics: m };
+        if (best && m[metricKey] <= best.metrics[metricKey]) continue; // can't beat the leader
+        // new offensive leader: now pay for the survivability check
+        var sv = survivability(hunt, playerCreature, pStats, m.hits, data.typechart);
+        if (!sv.survivable) continue;                      // skip hunts you'd faint in
+        m.survivesHits = sv.survivesHits; m.survivable = true;
+        best = { hunt: hunt, metrics: m };
       }
       return best;
     }
