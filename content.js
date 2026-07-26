@@ -59,7 +59,10 @@
       fixes: [
         { v: "0.8.1",
           en: "Pokédex auto-teleport no longer gets stuck at 100 kills when a species can't be caught: if auto-catch is off or you're out of the selected catch ball, it moves on to the next species that still needs kills.",
-          pt: "O auto-teleporte da Pokédex não trava mais nos 100 kills quando uma espécie não pode ser capturada: se a autocaptura estiver desligada ou você estiver sem a ball selecionada, ele vai para a próxima espécie que ainda precisa de kills." }
+          pt: "O auto-teleporte da Pokédex não trava mais nos 100 kills quando uma espécie não pode ser capturada: se a autocaptura estiver desligada ou você estiver sem a ball selecionada, ele vai para a próxima espécie que ainda precisa de kills." },
+        { v: "0.8.2",
+          en: "Pokédex auto-teleport now prioritizes species that already have 100 kills and only need a catch, instead of skipping them for a fresh hunt.",
+          pt: "O auto-teleporte da Pokédex agora prioriza espécies que já têm 100 kills e só precisam de uma captura, em vez de pulá-las para uma caça nova." }
       ]
     }
   };
@@ -1285,10 +1288,25 @@
     var plan = engine.pokedexPlan(pokedex);
     return plan.todo.concat(pdexHuntAll ? plan.beyond : []);
   }
-  // species from the list that still make kill progress (below the cap). Capped
-  // species are skipped so auto-teleport doesn't bounce back to one we just left.
-  function pdexFarmable() {
-    return pdexList().filter(function (it) { return (it.kills || 0) < (it.unlockKills || 100); });
+  // species auto-teleport may move to: everything still ACTIONABLE (not terminal).
+  // A species at the kill cap but not yet caught stays a valid target when the player
+  // CAN catch (auto-catch on + balls) — being at its hunt is what lets auto-catch finish
+  // it, and it's one catch from done, so it's preferred over species that still need kills.
+  // Terminal species (done, or capped & uncatchable) are excluded so we never bounce back.
+  function pdexTargets() {
+    var blocked = catchBlocked();
+    var list = pdexList().filter(function (it) {
+      var capped = (it.kills || 0) >= (it.unlockKills || 100);
+      return !(capped && (it.caught || blocked));            // keep only non-terminal
+    });
+    // catch-only species first (capped, uncaught → one catch from done), each group
+    // easiest-first; a near-done Mankey (100/100) thus wins over a fresh Shellder (13/100).
+    list.sort(function (a, b) {
+      var ac = (a.kills || 0) >= (a.unlockKills || 100) ? 0 : 1;
+      var bc = (b.kills || 0) >= (b.unlockKills || 100) ? 0 : 1;
+      return ac - bc || (a.huntLevel || 0) - (b.huntLevel || 0);
+    });
+    return list;
   }
   // pokeIds we should NOT keep sitting on: fully done (caught AND >= unlockKills), or
   // at the kill cap but uncatchable (auto-catch off / out of the selected ball). The
@@ -1306,9 +1324,9 @@
   // Auto-teleport advances when a species newly becomes "leave here" since the last
   // check — either it completed (caught + cap) or it hit the cap while the player
   // can't catch (auto-catch off / no balls). Never advances just because auto-teleport
-  // was turned on: the first poll establishes the baseline. We move to the next species
-  // that still needs kills; if none do (everything left is capped-but-uncaught), we
-  // stay put until balls/auto-catch come back.
+  // was turned on: the first poll establishes the baseline. We move to the best actionable
+  // target (catch-only species first, then by level); if nothing is actionable (everything
+  // left is capped-but-uncatchable) we stay put until balls/auto-catch come back.
   function pdexTick() {
     if (!pdexAutoTp || autoTeleporting || !pokedex) return;
     var term = terminalIds();
@@ -1317,8 +1335,10 @@
     for (var id in term) { if (!pdexTermSet[id]) { newly = true; break; } }
     pdexTermSet = term;
     if (!newly) return;                                       // nothing new to leave since last check
-    var farm = pdexFarmable();
-    if (farm.length) advancePdex(farm[0]);                    // -> next species that still needs kills
+    var targets = pdexTargets();
+    // go to the best actionable species (catch-only first), but if that's already our
+    // current target, stay put — never skip it for a worse one, never re-teleport to self.
+    if (targets.length && targets[0].pokeId !== pdexActive) advancePdex(targets[0]);
   }
   function advancePdex(item) {
     pdexActive = item.pokeId;
