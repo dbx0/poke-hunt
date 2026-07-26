@@ -34,7 +34,8 @@
   var pdexAutoTp = false, pdexAutoPick = false, pdexHuntAll = false; // toggles (persisted)
   var pdexActive = null;                   // pokeId of the current auto-teleport target
   var pdexTimer = null;                    // ~10s poll interval
-  var pdexDoneSet = null;                  // baseline of completed pokeIds; a NEW completion triggers advance
+  var pdexTermSet = null;                  // baseline of "leave here" pokeIds; a NEW one triggers advance
+  var autoHelper = null;                   // { autoCatch, autoCatchBallId, balls:[{id,quantity}] } from /api/game/auto-helper
   var pdexLastPlan = null;                 // last rendered plan (ref); skip re-render when unchanged (no blink)
 
   // ---------- "what's new" update indicator ----------
@@ -44,6 +45,14 @@
   // Per-version feature notes shown in the "What's new" modal. Add an entry when a
   // release ships user-facing features; versions without one fall back to a generic line.
   var CHANGELOG = {
+    "0.8.1": {
+      en: { title: "Pokédex auto-teleport unsticks", points: [
+        "Auto-teleport no longer gets stuck at 100 kills when a species can't be caught: if auto-catch is off or you're out of the selected catch ball, it moves you on to the next species that still needs kills.",
+        "If auto-catch is on and you still have balls, it waits as before, so an unlucky capture never teleports you away." ] },
+      pt: { title: "Auto-teleporte da Pokédex não trava mais", points: [
+        "O auto-teleporte não trava mais nos 100 kills quando uma espécie não pode ser capturada: se a autocaptura estiver desligada ou você estiver sem a ball selecionada, ele te leva para a próxima espécie que ainda precisa de kills.",
+        "Se a autocaptura estiver ligada e você ainda tiver balls, ele espera como antes, então uma captura azarada nunca te teleporta embora." ] }
+    },
     "0.8.0": {
       en: { title: "Pokédex tab", points: [
         "A new tab lists every Pokémon you still need to finish for the Pokédex (100 kills and a capture), sorted from easiest to hardest, each with a one-click teleport.",
@@ -799,7 +808,7 @@
           if (key === "pdexAutoTp") pdexAutoTp = val; else if (key === "pdexAutoPick") pdexAutoPick = val; else pdexHuntAll = val;
           var o = {}; o[key] = val; storeSet(o);
           sw.classList.toggle("on", val); sw.setAttribute("aria-checked", val ? "true" : "false");
-          if (key === "pdexAutoTp") { pdexDoneSet = val && pokedex ? completedIds() : null; pdexActive = null; ensurePdexPoll(); }
+          if (key === "pdexAutoTp") { if (val) loadAutoHelper(); pdexTermSet = val && pokedex ? terminalIds() : null; pdexActive = null; ensurePdexPoll(); }
           // Hunt all only changes the auto-teleport scope, not the visible list — no re-render needed
         });
       });
@@ -1217,11 +1226,33 @@
       });
   }
 
+  // the game's auto-catch settings + ball inventory (one authed GET). Tells us
+  // whether the player *can* catch right now; if not, auto-teleport stops waiting
+  // on an uncatchable species and moves on. Only fetched while auto-teleport is on.
+  function loadAutoHelper() {
+    if (!contextAlive()) return;
+    fetch("/api/game/auto-helper", { credentials: "include", headers: authHeaders() })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (j) { autoHelper = j; })
+      .catch(function () { /* transient — keep the last known value */ });
+  }
+  // true when the player cannot be catching right now: auto-catch off, or no balls
+  // left of the one auto-catch throws (autoCatchBallId). Unknown (no fetch yet) ->
+  // false, so we never yank a player who might just be an unlucky catcher.
+  function catchBlocked() {
+    if (!autoHelper) return false;
+    if (autoHelper.autoCatch === false) return true;
+    var balls = autoHelper.balls || [], id = autoHelper.autoCatchBallId, q = 0;
+    for (var i = 0; i < balls.length; i++) { if (balls[i] && balls[i].id === id) { q = balls[i].quantity || 0; break; } }
+    return q <= 0;   // 0 (or no ball selected -> id not found) means it can't throw
+  }
+
   // poll the Pokedex while the tab is open OR auto-teleport is on (so it keeps
   // advancing even with the panel closed, like Auto level up)
   function ensurePdexPoll() {
     var need = pdexAutoTp || (isOpen() && currentTab === "pokedex");
     if (need && !pdexTimer) {
+      if (pdexAutoTp) loadAutoHelper();
       loadPokedex(pdexRefresh);
       pdexTimer = setInterval(pdexPollTick, 10000);
     } else if (!need && pdexTimer) {
@@ -1230,6 +1261,7 @@
   }
   function pdexPollTick() {
     if (!contextAlive()) { if (pdexTimer) { clearInterval(pdexTimer); pdexTimer = null; } return; }
+    if (pdexAutoTp) loadAutoHelper();   // refresh catch state alongside the pokedex
     loadPokedex(pdexRefresh);
   }
   // after a poll: advance auto-teleport, and re-render ONLY if the plan changed
@@ -1247,28 +1279,40 @@
     var plan = engine.pokedexPlan(pokedex);
     return plan.todo.concat(pdexHuntAll ? plan.beyond : []);
   }
-  // set of pokeIds fully complete right now (caught AND >= unlockKills)
-  function completedIds() {
+  // species from the list that still make kill progress (below the cap). Capped
+  // species are skipped so auto-teleport doesn't bounce back to one we just left.
+  function pdexFarmable() {
+    return pdexList().filter(function (it) { return (it.kills || 0) < (it.unlockKills || 100); });
+  }
+  // pokeIds we should NOT keep sitting on: fully done (caught AND >= unlockKills), or
+  // at the kill cap but uncatchable (auto-catch off / out of the selected ball). The
+  // latter is the fix for getting stuck at 100 kills with no way to capture.
+  function terminalIds() {
     var set = {};
     if (pokedex) {
-      var u = pokedex.unlockKills || 100;
-      pokedex.species.forEach(function (s) { if (s.caught && s.kills >= u) set[s.id] = true; });
+      var u = pokedex.unlockKills || 100, blocked = catchBlocked();
+      pokedex.species.forEach(function (s) {
+        if ((s.kills || 0) >= u && (s.caught || blocked)) set[s.id] = true;
+      });
     }
     return set;
   }
-  // Auto-teleport advances ONLY when a species newly completes (caught + 100 kills)
-  // since we last checked — never just because auto-teleport was turned on. The first
-  // poll after enabling establishes the baseline without teleporting.
+  // Auto-teleport advances when a species newly becomes "leave here" since the last
+  // check — either it completed (caught + cap) or it hit the cap while the player
+  // can't catch (auto-catch off / no balls). Never advances just because auto-teleport
+  // was turned on: the first poll establishes the baseline. We move to the next species
+  // that still needs kills; if none do (everything left is capped-but-uncaught), we
+  // stay put until balls/auto-catch come back.
   function pdexTick() {
     if (!pdexAutoTp || autoTeleporting || !pokedex) return;
-    var done = completedIds();
-    if (pdexDoneSet == null) { pdexDoneSet = done; return; }  // baseline only, no jump
+    var term = terminalIds();
+    if (pdexTermSet == null) { pdexTermSet = term; return; }  // baseline only, no jump
     var newly = false;
-    for (var id in done) { if (!pdexDoneSet[id]) { newly = true; break; } }
-    pdexDoneSet = done;
-    if (!newly) return;                                       // nothing finished since last check
-    var list = pdexList();
-    if (list.length) advancePdex(list[0]);                    // completed one -> next easiest
+    for (var id in term) { if (!pdexTermSet[id]) { newly = true; break; } }
+    pdexTermSet = term;
+    if (!newly) return;                                       // nothing new to leave since last check
+    var farm = pdexFarmable();
+    if (farm.length) advancePdex(farm[0]);                    // -> next species that still needs kills
   }
   function advancePdex(item) {
     pdexActive = item.pokeId;
