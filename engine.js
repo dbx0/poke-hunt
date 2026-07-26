@@ -232,13 +232,18 @@
     itemList.forEach(function (it) { if (it && it.name) data.itemPrices[String(it.name).trim().toLowerCase()] = it.npcPrice || 0; });
     var huntList = buildHunts(data.hunts, creatures, data.speeds);
     var huntBySlug = new Map();
+    var huntByPokeId = new Map();          // pokeId -> easiest (lowest-level) hunt, for the Pokedex tab
     // enemy stats/HP depend only on the creature (not the player), so compute them
     // once here instead of on every huntMetrics call across the level simulation.
     huntList.forEach(function (h) {
       h._eStats = enemyStats(h.creature);
       h._eTotalHp = enemyTotalHp(h.creature);
       huntBySlug.set(h.slug, h);
+      var pid = h.creature.pokeId;
+      var ex = huntByPokeId.get(pid);
+      if (!ex || h.minLevel < ex.minLevel) huntByPokeId.set(pid, h);
     });
+    var pdexCache = { key: null, val: null };  // memoized pokedexPlan (see route cache)
     var byName = new Map();
     var byId = new Map();
     creatures.forEach(function (c) { byName.set(normSlug(c.name), c); byId.set(c.pokeId, c); });
@@ -506,8 +511,47 @@
                huntLevel: c.huntLevel, spritePokeId: spriteIdOf(c), type1: c.type1, type2: c.type2 };
     }
 
+    // Pokedex to-do lists from the game's /api/game/pokedex response.
+    //   todo   = species in the response not yet complete (caught && kills>=unlockKills)
+    //   beyond = huntable species NOT in the response (the game's dex doesn't track them)
+    // Both are limited to huntable species (need a teleport target), sorted easiest first
+    // (hunt level asc). Memoized on the response signature so tab switches are instant.
+    function pdexItem(h, kills, caught, unlockKills) {
+      var c = h.creature;
+      return { pokeId: c.pokeId, name: h.name || c.name, huntLevel: c.huntLevel,
+               slug: h.slug, area: h.area, spritePokeId: spriteIdOf(c),
+               kills: kills, caught: !!caught, unlockKills: unlockKills };
+    }
+    function pokedexPlan(dex) {
+      if (!dex || !dex.species) return { todo: [], beyond: [], total: 0, unlockKills: 100 };
+      var unlockKills = dex.unlockKills || 100;
+      var species = dex.species;
+      var sig = unlockKills + ";" + species.map(function (s) { return s.id + ":" + s.kills + ":" + (s.caught ? 1 : 0); }).join(",");
+      if (pdexCache.key === sig) return pdexCache.val;
+      var inDex = {};
+      var todo = [];
+      species.forEach(function (s) {
+        inDex[s.id] = true;
+        if (s.caught && s.kills >= unlockKills) return;    // fully complete -> hide
+        var h = huntByPokeId.get(s.id);
+        if (!h) return;                                    // not huntable -> can't teleport
+        todo.push(pdexItem(h, s.kills || 0, s.caught, unlockKills));
+      });
+      var beyond = [];
+      huntByPokeId.forEach(function (h, pid) {
+        if (inDex[pid]) return;
+        beyond.push(pdexItem(h, 0, false, unlockKills));
+      });
+      var byLevel = function (a, b) { return a.huntLevel - b.huntLevel || a.name.localeCompare(b.name); };
+      todo.sort(byLevel); beyond.sort(byLevel);
+      var val = { todo: todo, beyond: beyond, total: species.length, unlockKills: unlockKills };
+      pdexCache = { key: sig, val: val };
+      return val;
+    }
+
     return { computeRoute: computeRoute, rankNow: rankNow, huntCount: huntList.length,
              searchTargets: searchTargets, captureRanking: captureRanking, lookupHunt: lookupHunt,
+             pokedexPlan: pokedexPlan,
              _internal: { statAt: statAt, enemyStats: enemyStats, enemyTotalHp: enemyTotalHp,
                           effectiveness: effectiveness, killsPerHour: killsPerHour, buildHunts: buildHunts } };
   }

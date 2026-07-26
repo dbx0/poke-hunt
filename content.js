@@ -27,7 +27,15 @@
   var autoSpecies = null, autoLevel = null, autoSlug = null; // tracking for the active poke
   var autoTeleporting = false;             // in-flight guard so we don't stack teleports
   var suppressToastUntil = 0;              // skip the favorite toast for auto teleports
-  var cdHost, cdShadow, cdTimer = null;    // Auto level up countdown modal
+  var cdHost, cdShadow, cdTimer = null, cdOnProceed = null; // countdown modal (shared)
+
+  // ---------- Pokedex tab ----------
+  var pokedex = null;                      // { unlockKills, species:[...], at } from /api/game/pokedex
+  var pdexAutoTp = false, pdexAutoPick = false, pdexHuntAll = false; // toggles (persisted)
+  var pdexActive = null;                   // pokeId of the current auto-teleport target
+  var pdexTimer = null;                    // ~10s poll interval
+  var pdexDoneSet = null;                  // baseline of completed pokeIds; a NEW completion triggers advance
+  var pdexLastPlan = null;                 // last rendered plan (ref); skip re-render when unchanged (no blink)
 
   // ---------- Places (favorites + recent teleports), persisted in chrome.storage ----------
   var places = { favorites: [], recent: [] };
@@ -35,10 +43,11 @@
   function storeGet(keys) { return new Promise(function (res) { try { chrome.storage.local.get(keys, function (v) { res(v || {}); }); } catch (e) { res({}); } }); }
   function storeSet(obj) { try { chrome.storage.local.set(obj); } catch (e) {} }
   async function loadPlaces() {
-    var v = await storeGet(["favorites", "recent", "autoLevelUp"]);
+    var v = await storeGet(["favorites", "recent", "autoLevelUp", "pdexAutoTp", "pdexAutoPick", "pdexHuntAll"]);
     places.favorites = Array.isArray(v.favorites) ? v.favorites : [];
     places.recent = Array.isArray(v.recent) ? v.recent : [];
     autoLevelUp = !!v.autoLevelUp;
+    pdexAutoTp = !!v.pdexAutoTp; pdexAutoPick = !!v.pdexAutoPick; pdexHuntAll = !!v.pdexHuntAll;
   }
 
   // When enabled: as the active Pokémon levels up and the XP plan's current band
@@ -65,8 +74,13 @@
     if (cur.slug === autoSlug) return;                          // same band's best hunt: nothing to do
     autoSlug = cur.slug;
     autoTeleporting = true;                                      // hold until the countdown resolves
-    showAutoCountdown(cur);
+    var band = cur.fromLevel + (cur.toLevel ? "–" + cur.toLevel : "+");
+    showAutoCountdown(card(cur, { band: band, current: true }), function () {
+      suppressToastUntil = Date.now() + 6000;                   // don't nag with the favorite toast
+      teleport(cur.slug, cur.name, cur.area).then(clearAuto, clearAuto);
+    });
   }
+  function clearAuto() { autoTeleporting = false; }
 
   // 5s "teleporting you in…" confirmation before an auto level-up jump. Rendered in
   // its own shadow host so it shows even while the main modal is closed, and reuses
@@ -80,22 +94,19 @@
     document.body.appendChild(cdHost);
   }
 
-  function closeCountdown(proceed, step) {
+  function closeCountdown(proceed) {
     if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
     if (cdHost) cdHost.style.display = "none";
-    if (proceed && step) {
-      suppressToastUntil = Date.now() + 6000;                   // don't nag with the favorite toast
-      teleport(step.slug, step.name, step.area).then(function () { autoTeleporting = false; },
-                                                     function () { autoTeleporting = false; });
-    } else {
-      autoTeleporting = false;                                  // cancelled: stay put (already synced to this band)
-    }
+    var proceedFn = cdOnProceed; cdOnProceed = null;
+    if (proceed && proceedFn) proceedFn();                      // the callback owns resetting autoTeleporting
+    else autoTeleporting = false;                               // cancelled: stay put
   }
 
-  function showAutoCountdown(step) {
+  // 5s confirmation before an auto teleport. `cardHtml` is the card to preview;
+  // `onProceed` runs if the countdown finishes (it must reset autoTeleporting).
+  function showAutoCountdown(cardHtml, onProceed) {
     ensureCountdown();
-    var band = step.fromLevel + (step.toLevel ? "–" + step.toLevel : "+");
-    var cardHtml = card(step, { band: band, current: true });
+    cdOnProceed = onProceed || null;
     var wrap = document.createElement("div");
     wrap.className = "pr-backdrop";
     wrap.innerHTML =
@@ -130,7 +141,7 @@
     if (cdTimer) clearInterval(cdTimer);
     cdTimer = setInterval(function () {
       left -= 1;
-      if (left <= 0) { closeCountdown(true, step); return; }
+      if (left <= 0) { closeCountdown(true); return; }
       num.textContent = left + "s";
     }, 1000);
   }
@@ -178,8 +189,16 @@
   }
   var I18N = {
     en: {
-      tab_xp: "XP farm", tab_loot: "Loot farm", tab_capture: "Capture", tab_favorites: "Favorites",
+      tab_xp: "XP farm", tab_loot: "Loot farm", tab_capture: "Capture", tab_pokedex: "Pokédex", tab_favorites: "Favorites",
       close: "Close", cancel: "Cancel", credit_created: "created with", credit_by: "by", support: "support me",
+      pdex_todo: "Pokédex to-do", pdex_beyond: "Beyond the Pokédex",
+      pdex_caught: "caught ✓", pdex_notcaught: "not caught", pdex_progress: "{k}/{n} kills",
+      pdex_auto_tp: "Auto-teleport", pdex_auto_pick: "Auto-pick", pdex_hunt_all: "Hunt all",
+      pdex_auto_tp_tip: "When a Pokémon is fully done (caught + 100 kills), automatically teleport to the next easiest one.",
+      pdex_auto_pick_tip: "On each teleport, summon the best Pokémon in your party for that target.",
+      pdex_hunt_all_tip: "The game's Pokédex tracks {n} species. Turn on to also hunt the rest of the catchable Pokémon.They don't count toward Pokédex completion.",
+      pdex_empty: "Pokédex complete! Nothing left to hunt.", pdex_todo_done: "All tracked species done — turn on Hunt all for more.",
+      pdex_loading: "Loading Pokédex…", pdex_load_fail: "Couldn't load your Pokédex. Make sure you're logged in.",
       auto_label: "Auto level up",
       auto_tip: "Auto-teleports to the next best XP hunt as your Pokémon levels up.",
       cd_section: "Teleporting to next best match",
@@ -204,8 +223,16 @@
       fav_toast_msg: "Add <b>{name}</b> to favorites?", fav_toast_add: "★ Add"
     },
     pt: {
-      tab_xp: "Farm de XP", tab_loot: "Farm de loot", tab_capture: "Captura", tab_favorites: "Favoritos",
+      tab_xp: "Farm de XP", tab_loot: "Farm de loot", tab_capture: "Captura", tab_pokedex: "Pokédex", tab_favorites: "Favoritos",
       close: "Fechar", cancel: "Cancelar", credit_created: "feito com", credit_by: "por", support: "me apoiar",
+      pdex_todo: "Faltando na Pokédex", pdex_beyond: "Além da Pokédex",
+      pdex_caught: "capturado ✓", pdex_notcaught: "não capturado", pdex_progress: "{k}/{n} kills",
+      pdex_auto_tp: "Auto-teleporte", pdex_auto_pick: "Escolha automática", pdex_hunt_all: "Caçar tudo",
+      pdex_auto_tp_tip: "Quando um Pokémon é concluído (capturado + 100 kills), teleporta automaticamente para o próximo mais fácil.",
+      pdex_auto_pick_tip: "A cada teleporte, invoca o melhor Pokémon da sua party para aquele alvo.",
+      pdex_hunt_all_tip: "A Pokédex do jogo cobre {n} espécies. Ative para também caçar o resto dos Pokémon capturáveis. Eles não contam para completar a Pokédex.",
+      pdex_empty: "Pokédex completa! Nada para caçar.", pdex_todo_done: "Todas as espécies da Pokédex concluídas — ative Hunt all para mais.",
+      pdex_loading: "Carregando Pokédex…", pdex_load_fail: "Não foi possível carregar sua Pokédex. Confira se você está logado.",
       auto_label: "Auto level up",
       auto_tip: "Teleporta automaticamente para o melhor hunt de XP conforme seu Pokémon sobe de level.",
       cd_section: "Teleportando para a próxima melhor escolha",
@@ -545,6 +572,9 @@
     ".pr-switch{flex:0 0 auto;cursor:pointer;width:28px;height:16px;border-radius:999px;border:1px solid #4a3d6b;background:#1a1330;padding:0;position:relative;transition:background .18s ease,border-color .18s ease}" +
     ".pr-switch.on{background:#7b3ff2;border-color:#7b3ff2}" +
     ".pr-switch-knob{position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:999px;background:#fff;transition:transform .18s ease}.pr-switch.on .pr-switch-knob{transform:translateX(12px)}" +
+    ".pr-opt-unit{display:inline-flex;align-items:center;gap:6px}.pr-opt-multi{justify-content:space-between;gap:8px;flex-wrap:wrap}" +
+    ".pr-tip-r .pr-opt-tipbox{left:auto;right:0}.pr-tip-c .pr-opt-tipbox{left:50%;transform:translateX(-50%)}" +
+    ".pr-pdex-chip,.pr-pdex-kills{font-size:11px;font-weight:700;color:#8a829f}.pr-pdex-chip.pr-pdex-on,.pr-pdex-kills.pr-pdex-on{color:#63d873}" +
     ".pr-cd{width:min(380px,92vw)}" +
     ".pr-cd-count{text-align:center;margin:6px 0 2px}" +
     ".pr-cd-num{font-size:34px;font-weight:800;color:#b98cff;line-height:1.15;font-variant-numeric:tabular-nums}" +
@@ -561,7 +591,7 @@
     if (currentLang() !== lastLang) { render(); return; }
     // the Capture tab never re-renders from DOM mutations (chat, etc.) — it only
     // refreshes when the owned-Pokemon list actually changes (see cacheWsPokes)
-    if (currentTab === "capture" || currentTab === "places") return;
+    if (currentTab === "capture" || currentTab === "places" || currentTab === "pokedex") return;
     if (pokeKey(readActivePoke()) !== lastPokeKey) render();
   }
 
@@ -591,6 +621,7 @@
           '<button class="pr-tab" data-tab="xp">' + t("tab_xp") + '</button>' +
           '<button class="pr-tab" data-tab="loot">' + t("tab_loot") + '</button>' +
           '<button class="pr-tab" data-tab="capture">' + t("tab_capture") + '</button>' +
+          '<button class="pr-tab" data-tab="pokedex">' + t("tab_pokedex") + '</button>' +
           '<button class="pr-tab" data-tab="places">' + t("tab_favorites") + '</button>' +
         '</div>' +
         '<div class="pr-optbar" hidden></div>' +
@@ -684,28 +715,55 @@
 
   // persistent options bar between the tabs and the scroll body (so its tooltips
   // aren't clipped by the body's overflow). Only the XP tab uses it for now.
+  // one toggle unit: [label] [? tip] [switch data-opt=key]. `pos` (l/c/r) steers the
+  // tooltip so it doesn't overflow the modal edge when units sit side by side.
+  function optUnit(key, label, on, tip, pos) {
+    return '<span class="pr-opt-unit">' +
+      '<span class="pr-opt-label">' + label + '</span>' +
+      (tip ? '<span class="pr-opt-tip pr-tip-' + (pos || "l") + '" tabindex="0">?<span class="pr-opt-tipbox">' + tip + '</span></span>' : '') +
+      '<button class="pr-switch' + (on ? ' on' : '') + '" type="button" role="switch" ' +
+        'aria-checked="' + (on ? 'true' : 'false') + '" data-opt="' + key + '"><span class="pr-switch-knob"></span></button>' +
+    '</span>';
+  }
   function renderOptbar() {
     var bar = shadow.querySelector(".pr-optbar");
     if (!bar) return;
-    if (currentTab !== "xp") { bar.hidden = true; bar.innerHTML = ""; return; }
-    bar.hidden = false;
-    bar.innerHTML =
-      '<div class="pr-opt">' +
-        '<span class="pr-opt-label">' + t("auto_label") + '</span>' +
-        '<span class="pr-opt-tip" tabindex="0">?' +
-          '<span class="pr-opt-tipbox">' + t("auto_tip") + '</span>' +
-        '</span>' +
-        '<button class="pr-switch' + (autoLevelUp ? ' on' : '') + '" type="button" role="switch" ' +
-          'aria-checked="' + (autoLevelUp ? 'true' : 'false') + '"><span class="pr-switch-knob"></span></button>' +
-      '</div>';
-    var sw = bar.querySelector(".pr-switch");
-    sw.addEventListener("click", function () {
-      autoLevelUp = !autoLevelUp;
-      storeSet({ autoLevelUp: autoLevelUp });
-      sw.classList.toggle("on", autoLevelUp);
-      sw.setAttribute("aria-checked", autoLevelUp ? "true" : "false");
-      if (autoLevelUp) { autoSlug = null; autoLevelTick(); }   // sync to current spot on enable
-    });
+    if (currentTab === "xp") {
+      bar.hidden = false;
+      bar.innerHTML = '<div class="pr-opt">' + optUnit("autoLevelUp", t("auto_label"), autoLevelUp, t("auto_tip"), "l") + '</div>';
+      var sw = bar.querySelector(".pr-switch");
+      sw.addEventListener("click", function () {
+        autoLevelUp = !autoLevelUp;
+        storeSet({ autoLevelUp: autoLevelUp });
+        sw.classList.toggle("on", autoLevelUp);
+        sw.setAttribute("aria-checked", autoLevelUp ? "true" : "false");
+        if (autoLevelUp) { autoSlug = null; autoLevelTick(); }   // sync to current spot on enable
+      });
+      return;
+    }
+    if (currentTab === "pokedex") {
+      bar.hidden = false;
+      var n = pokedex ? pokedex.species.length : 0;
+      bar.innerHTML =
+        '<div class="pr-opt pr-opt-multi">' +
+          optUnit("pdexAutoTp", t("pdex_auto_tp"), pdexAutoTp, t("pdex_auto_tp_tip"), "l") +
+          optUnit("pdexAutoPick", t("pdex_auto_pick"), pdexAutoPick, t("pdex_auto_pick_tip"), "c") +
+          optUnit("pdexHuntAll", t("pdex_hunt_all"), pdexHuntAll, t("pdex_hunt_all_tip", { n: n }), "r") +
+        '</div>';
+      bar.querySelectorAll(".pr-switch[data-opt]").forEach(function (sw) {
+        sw.addEventListener("click", function () {
+          var key = sw.getAttribute("data-opt");
+          var val = !(key === "pdexAutoTp" ? pdexAutoTp : key === "pdexAutoPick" ? pdexAutoPick : pdexHuntAll);
+          if (key === "pdexAutoTp") pdexAutoTp = val; else if (key === "pdexAutoPick") pdexAutoPick = val; else pdexHuntAll = val;
+          var o = {}; o[key] = val; storeSet(o);
+          sw.classList.toggle("on", val); sw.setAttribute("aria-checked", val ? "true" : "false");
+          if (key === "pdexAutoTp") { pdexDoneSet = val && pokedex ? completedIds() : null; pdexActive = null; ensurePdexPoll(); }
+          // Hunt all only changes the auto-teleport scope, not the visible list — no re-render needed
+        });
+      });
+      return;
+    }
+    bar.hidden = true; bar.innerHTML = "";
   }
 
   function render(opts) {
@@ -724,10 +782,12 @@
       t.classList.toggle("pr-tab-on", t.getAttribute("data-tab") === currentTab);
     });
 
-    renderOptbar();   // options bar (currently just XP-tab Auto level up)
+    renderOptbar();   // options bar (XP Auto level up, Pokedex toggles)
+    ensurePdexPoll(); // start/stop the Pokedex poll based on the active tab
 
     // Capture tab has its own layout (search + target + owned-Pokemon ranking)
     if (currentTab === "capture") { hero.innerHTML = ""; renderCapture(body); return; }
+    if (currentTab === "pokedex") { hero.innerHTML = ""; renderPokedex(body); return; }
     if (currentTab === "places") { hero.innerHTML = ""; renderPlaces(body); return; }
 
     var poke = readActivePoke();
@@ -1094,6 +1154,165 @@
     });
   }
 
+  // ---------- Pokedex tab ----------
+  function loadPokedex(cb, attempt) {
+    attempt = attempt || 0;
+    if (!contextAlive()) return;
+    fetch("/api/game/pokedex", { credentials: "include", headers: authHeaders() })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (j) {
+        pokedex = { unlockKills: j.unlockKills || 100, species: j.species || [], at: Date.now() };
+        if (cb) cb();
+        else if (isOpen() && currentTab === "pokedex") renderPokedex(shadow.querySelector(".pr-body"));
+      })
+      .catch(function () {
+        if (attempt < 5) setTimeout(function () { loadPokedex(cb, attempt + 1); }, 1500 + attempt * 1500);
+        else if (cb) cb();
+        else if (isOpen() && currentTab === "pokedex" && !pokedex) {
+          shadow.querySelector(".pr-body").innerHTML = '<div class="pr-empty">' + t("pdex_load_fail") + '</div>';
+        }
+      });
+  }
+
+  // poll the Pokedex while the tab is open OR auto-teleport is on (so it keeps
+  // advancing even with the panel closed, like Auto level up)
+  function ensurePdexPoll() {
+    var need = pdexAutoTp || (isOpen() && currentTab === "pokedex");
+    if (need && !pdexTimer) {
+      loadPokedex(pdexRefresh);
+      pdexTimer = setInterval(pdexPollTick, 10000);
+    } else if (!need && pdexTimer) {
+      clearInterval(pdexTimer); pdexTimer = null;
+    }
+  }
+  function pdexPollTick() {
+    if (!contextAlive()) { if (pdexTimer) { clearInterval(pdexTimer); pdexTimer = null; } return; }
+    loadPokedex(pdexRefresh);
+  }
+  // after a poll: advance auto-teleport, and re-render ONLY if the plan changed
+  // (the engine returns the same cached plan object when nothing changed → no blink)
+  function pdexRefresh() {
+    pdexTick();
+    if (!isOpen() || currentTab !== "pokedex" || !pokedex) return;
+    var plan = engine.pokedexPlan(pokedex);
+    if (plan !== pdexLastPlan) renderPokedex(shadow.querySelector(".pr-body"));
+  }
+
+  // ordered auto-teleport list (to-do, then Beyond if Hunt all)
+  function pdexList() {
+    if (!engine || !pokedex) return [];
+    var plan = engine.pokedexPlan(pokedex);
+    return plan.todo.concat(pdexHuntAll ? plan.beyond : []);
+  }
+  // set of pokeIds fully complete right now (caught AND >= unlockKills)
+  function completedIds() {
+    var set = {};
+    if (pokedex) {
+      var u = pokedex.unlockKills || 100;
+      pokedex.species.forEach(function (s) { if (s.caught && s.kills >= u) set[s.id] = true; });
+    }
+    return set;
+  }
+  // Auto-teleport advances ONLY when a species newly completes (caught + 100 kills)
+  // since we last checked — never just because auto-teleport was turned on. The first
+  // poll after enabling establishes the baseline without teleporting.
+  function pdexTick() {
+    if (!pdexAutoTp || autoTeleporting || !pokedex) return;
+    var done = completedIds();
+    if (pdexDoneSet == null) { pdexDoneSet = done; return; }  // baseline only, no jump
+    var newly = false;
+    for (var id in done) { if (!pdexDoneSet[id]) { newly = true; break; } }
+    pdexDoneSet = done;
+    if (!newly) return;                                       // nothing finished since last check
+    var list = pdexList();
+    if (list.length) advancePdex(list[0]);                    // completed one -> next easiest
+  }
+  function advancePdex(item) {
+    pdexActive = item.pokeId;
+    autoTeleporting = true;
+    showAutoCountdown(pdexCard(item), function () {
+      suppressToastUntil = Date.now() + 6000;
+      pdexGo(item).then(clearAuto, clearAuto);
+    });
+  }
+  // teleport to a Pokedex target, summoning the best party Pokemon first if Auto-pick is on
+  function pdexGo(item) {
+    if (pdexAutoPick) {
+      var best = bestOwnedFor(item.pokeId);
+      if (best != null) return switchAndGo(best, item.slug, item.name, item.area);
+    }
+    return teleport(item.slug, item.name, item.area);
+  }
+  function bestOwnedFor(pokeId) {
+    try { var r = engine.captureRanking(pokeId, ownedPokes); return (r && r.list && r.list[0]) ? r.list[0].id : null; }
+    catch (e) { return null; }
+  }
+
+  function pdexCard(item) {
+    var caughtChip = item.caught
+      ? '<span class="pr-pdex-chip pr-pdex-on">' + t("pdex_caught") + '</span>'
+      : '<span class="pr-pdex-chip">' + t("pdex_notcaught") + '</span>';
+    var k = Math.min(item.kills, item.unlockKills);
+    var killChip = '<span class="pr-pdex-kills' + (item.kills >= item.unlockKills ? ' pr-pdex-on' : '') + '">' +
+      t("pdex_progress", { k: k, n: item.unlockKills }) + '</span>';
+    return '<div class="pr-card">' +
+      '<div class="pr-ico-wrap">' + iconHtml(item) + '</div>' +
+      '<div class="pr-card-body">' +
+        '<div class="pr-card-title">' + esc(item.name) + ' <span class="pr-clv">Lv.' + item.huntLevel + '</span></div>' +
+        '<div class="pr-card-metrics">' + caughtChip + killChip + '</div>' +
+      '</div>' +
+      '<button class="pr-tp" data-pid="' + item.pokeId + '" data-slug="' + esc(item.slug || "") +
+        '" data-name="' + esc(item.name) + '" data-area="' + esc(item.area || "") + '">' + t("teleport") + '</button>' +
+    '</div>';
+  }
+
+  function renderPokedex(body) {
+    if (!pokedex) { body.innerHTML = '<div class="pr-empty">' + t("pdex_loading") + '</div>'; loadPokedex(); return; }
+    var plan = engine.pokedexPlan(pokedex);
+    pdexLastPlan = plan;                                     // mark what's on screen (poll skips re-render if unchanged)
+    var html = "";
+    if (!plan.todo.length && !(pdexHuntAll && plan.beyond.length) && !plan.beyond.length) {
+      html = '<div class="pr-empty">' + t("pdex_empty") + '</div>';
+    } else {
+      html += '<div class="pr-section">' + t("pdex_todo") + '</div>';
+      html += plan.todo.length ? plan.todo.map(pdexCard).join("") : '<div class="pr-empty">' + t("pdex_todo_done") + '</div>';
+      if (plan.beyond.length) {
+        var open = collapsed.pdexBeyond === false;             // default collapsed
+        html += '<button class="pr-collapse" type="button" data-key="pdexBeyond" aria-expanded="' + open + '">' +
+          '<span class="pr-collapse-arrow">' + (open ? "▾" : "▸") + '</span> ' + t("pdex_beyond") +
+          '<span class="pr-collapse-n">' + plan.beyond.length + '</span></button>' +
+          '<div class="pr-below' + (open ? "" : " pr-collapsed") + '" data-key="pdexBeyond">' +
+            plan.beyond.map(pdexCard).join("") + '</div>';
+      }
+    }
+    body.innerHTML = html;
+
+    body.querySelectorAll("img.pr-ico").forEach(function (img) {
+      img.addEventListener("error", function () { img.classList.add("pr-ico-off"); });
+    });
+    var bc = body.querySelector('.pr-collapse[data-key="pdexBeyond"]');
+    if (bc) bc.addEventListener("click", function () {
+      collapsed.pdexBeyond = collapsed.pdexBeyond === false ? true : false; // toggle (default collapsed)
+      var o = collapsed.pdexBeyond === false;
+      body.querySelector('.pr-below[data-key="pdexBeyond"]').classList.toggle("pr-collapsed", !o);
+      bc.setAttribute("aria-expanded", o ? "true" : "false");
+      bc.querySelector(".pr-collapse-arrow").textContent = o ? "▾" : "▸";
+    });
+    body.querySelectorAll(".pr-tp").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var it = { pokeId: +btn.getAttribute("data-pid"), slug: btn.getAttribute("data-slug"),
+                   name: btn.getAttribute("data-name"), area: btn.getAttribute("data-area") };
+        pdexActive = it.pokeId;                              // manual teleport sets the active target
+        btn.disabled = true; btn.textContent = "…";
+        pdexGo(it).then(function (res) {
+          if (res && res.ok) return;
+          btn.textContent = t("failed"); btn.classList.add("pr-fail");
+          setTimeout(function () { btn.disabled = false; btn.textContent = t("teleport"); btn.classList.remove("pr-fail"); }, 1800);
+        });
+      });
+    });
+  }
+
   function open() {
     ensureModal();
     if (!account.detected) loadAccount();   // last chance to pick up VIP/clan/trainer
@@ -1111,7 +1330,7 @@
     try { mods.metric = "xp"; engine.computeRoute(poke, mods); } catch (e) {}
     try { mods.metric = "loot"; engine.computeRoute(poke, mods); } catch (e) {}
   }
-  function close() { hideTip(); if (host) host.style.display = "none"; }
+  function close() { hideTip(); if (host) host.style.display = "none"; ensurePdexPoll(); }
   function toggle() { isOpen() ? close() : open(); }
 
   // ---------- dock button ----------
