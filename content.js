@@ -1099,6 +1099,17 @@
     if (!account.detected) loadAccount();   // last chance to pick up VIP/clan/trainer
     host.style.display = "block";
     render({ center: true });
+    setTimeout(warmRoutes, 0);              // precompute the other tab's route off the critical path
+  }
+  // warm the engine route cache for both metrics of the active poke, so switching
+  // between XP/Loot is instant (the first paint already cached the current tab).
+  function warmRoutes() {
+    if (!engine || !isOpen()) return;
+    var poke = readActivePoke();
+    if (!poke) return;
+    var mods = activeMods();
+    try { mods.metric = "xp"; engine.computeRoute(poke, mods); } catch (e) {}
+    try { mods.metric = "loot"; engine.computeRoute(poke, mods); } catch (e) {}
   }
   function close() { hideTip(); if (host) host.style.display = "none"; }
   function toggle() { isOpen() ? close() : open(); }

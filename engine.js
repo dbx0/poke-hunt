@@ -257,6 +257,22 @@
       return byName.get(normSlug(poke.name)) || null;
     }
 
+    // memoized routes: computeRoute is the hot path (full level simulation), and a
+    // tab switch or re-render calls it again with identical inputs. Key on everything
+    // that changes the result (poke identity/level/live stats + metric + account mods),
+    // so switching tabs or toggling boosts recomputes only when something real changed.
+    var routeCache = new Map();
+    var ROUTE_CACHE_MAX = 24;
+    function routeKey(poke, opts) {
+      var s = poke.stats;
+      var statsSig = (s && s.atk) ? [s.hp, s.atk, s.def, s.spAtk, s.spDef, s.speed].join(".") : "-";
+      return [opts.metric || "xp", normSlug(poke.name), poke.pokeId || "", poke.level, statsSig,
+        opts.fromLevel == null ? "" : opts.fromLevel,
+        opts.vip ? 1 : 0, opts.xpBoost ? 1 : 0, opts.lootBoost ? 1 : 0,
+        opts.clan || "", opts.clanRank || 0,
+        opts.profession || "", opts.professionRank || 0, opts.trainerLevel || 0].join("|");
+    }
+
     // resolve account modifiers (vip, clan, boosts, prestige trainer bonus) for a poke
     function resolveMods(opts, playerCreature) {
       return {
@@ -308,6 +324,8 @@
     // opts.metric: "xp" (default) or "loot" — which metric to optimize/band by.
     function computeRoute(poke, opts) {
       opts = opts || {};
+      var cacheKey = routeKey(poke, opts);
+      if (routeCache.has(cacheKey)) return routeCache.get(cacheKey);
       var playerCreature = resolvePlayerCreature(poke);
       if (!playerCreature) return { error: "unknown-species", steps: [] };
       var mods = resolveMods(opts, playerCreature);
@@ -365,7 +383,7 @@
         .filter(function (r) { return r[metricKey] > 0 && r.survivable; })
         .sort(function (a, b) { return a.minLevel - b.minLevel || b[metricKey] - a[metricKey]; });
 
-      return { species: playerCreature.name, level: poke.level, metric: opts.metric === "loot" ? "loot" : "xp",
+      var result = { species: playerCreature.name, level: poke.level, metric: opts.metric === "loot" ? "loot" : "xp",
                player: { pokeId: playerCreature.pokeId, looktype: playerCreature.looktype,
                          spritePokeId: (playerCreature.looktype != null && looktypeToBase[playerCreature.looktype]) || playerCreature.pokeId,
                          type1: playerCreature.type1, type2: playerCreature.type2, rarity: playerCreature.rarity },
@@ -373,6 +391,9 @@
                clanMult: mods.clanMult,
                trainerBonusPct: Math.round(trainerBonusFraction(mods, poke.level) * 100),
                steps: steps, upcoming: upcoming };
+      routeCache.set(cacheKey, result);
+      if (routeCache.size > ROUTE_CACHE_MAX) routeCache.delete(routeCache.keys().next().value); // evict oldest
+      return result;
     }
 
     // flat ranking of all currently-available hunts (for "best now"), by metric
