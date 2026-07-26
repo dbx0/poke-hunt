@@ -387,7 +387,7 @@
   padding: 18px; background: rgba(0,0,0,.72);
 }
 .pr-wn-box {
-  width: min(430px, 94%); max-height: 84%; overflow-y: auto;
+  width: min(430px, 94%); min-height: min(560px, 92%); max-height: 92%; overflow-y: auto;
   background: #000; border: 1px solid #2a2140; border-radius: 16px;
   padding: 18px 20px 16px; box-shadow: 0 24px 70px rgba(0,0,0,.7);
   scrollbar-width: thin; scrollbar-color: #7b3ff2 transparent;
