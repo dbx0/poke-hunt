@@ -10,3 +10,6 @@ dist/
 *.zip
 *.xpi
 web-ext-artifacts/
+
+# Docs
+docs/
