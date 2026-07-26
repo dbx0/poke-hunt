@@ -365,6 +365,49 @@
 }
 .pr-switch.on .pr-switch-knob { transform: translateX(12px); }
 
+/* New-version banner (matches the old gold update banner) */
+.pr-newsbar[hidden] { display: none; }
+.pr-newsbar {
+  display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+  font-size: 12px; font-weight: 700; color: #201400;
+  background: linear-gradient(90deg, #f0c040, #ffdf80);
+}
+.pr-news-msg { flex: 1 1 auto; }
+.pr-news-msg b { font-weight: 900; }
+.pr-news-btn {
+  flex: 0 0 auto; cursor: pointer; font-weight: 800; font-size: 11px;
+  color: #fff; background: #1a1226; border: none; padding: 6px 13px; border-radius: 999px;
+}
+.pr-news-btn:hover { background: #000; }
+.pr-news-x { flex: 0 0 auto; cursor: pointer; background: none; border: none; color: #6b560f; font-size: 13px; line-height: 1; }
+
+/* What's new modal (app-styled, with logo header + gold version chip) */
+.pr-wn {
+  position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  padding: 18px; background: rgba(0,0,0,.72);
+}
+.pr-wn-box {
+  width: min(430px, 94%); max-height: 84%; overflow-y: auto;
+  background: #000; border: 1px solid #2a2140; border-radius: 16px;
+  padding: 18px 20px 16px; box-shadow: 0 24px 70px rgba(0,0,0,.7);
+}
+.pr-wn-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.pr-wn-logo { height: 26px; width: auto; object-fit: contain; display: block; }
+.pr-wn-ver {
+  font-size: 11px; font-weight: 800; color: #201400;
+  background: linear-gradient(90deg, #f0c040, #ffdf80); padding: 2px 9px; border-radius: 999px;
+}
+.pr-wn-eyebrow { font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #b98cff; margin-bottom: 4px; }
+.pr-wn-feature { font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 11px; }
+.pr-wn-list { margin: 0 0 16px; padding-left: 18px; color: #cfc6e6; font-size: 13px; line-height: 1.6; }
+.pr-wn-list li { margin-bottom: 7px; }
+.pr-wn-close {
+  cursor: pointer; display: block; width: 100%; padding: 10px; border-radius: 11px;
+  font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: #fff; background: #7b3ff2; border: 1px solid #a35bff;
+}
+.pr-wn-close:hover { background: #8f57ff; }
+
 /* Pokedex tab */
 .pr-opt-unit { display: inline-flex; align-items: center; gap: 6px; }
 .pr-opt-multi { justify-content: space-between; gap: 8px; flex-wrap: wrap; }

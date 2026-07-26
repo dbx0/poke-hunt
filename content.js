@@ -37,17 +37,44 @@
   var pdexDoneSet = null;                  // baseline of completed pokeIds; a NEW completion triggers advance
   var pdexLastPlan = null;                 // last rendered plan (ref); skip re-render when unchanged (no blink)
 
+  // ---------- "what's new" update indicator ----------
+  var hasUpdate = false;                   // extension version changed since last opened -> nudge the dock button
+  var justUpdated = false;                 // set on the first open after an update -> show the news banner this session
+
+  // Per-version feature notes shown in the "What's new" modal. Add an entry when a
+  // release ships user-facing features; versions without one fall back to a generic line.
+  var CHANGELOG = {
+    "0.8.0": {
+      en: { title: "Pokédex tab", points: [
+        "A new tab lists every Pokémon you still need to finish for the Pokédex (100 kills and a capture), sorted from easiest to hardest, each with a one-click teleport.",
+        "Auto-teleport moves you to the next one the moment a species is complete, and Auto-pick summons the best Pokémon in your party for the target.",
+        "Hunt all extends the list beyond the species the game's Pokédex tracks." ] },
+      pt: { title: "Aba Pokédex", points: [
+        "Uma nova aba lista todos os Pokémon que faltam para completar a Pokédex (100 kills e uma captura), do mais fácil ao mais difícil, cada um com teleporte em um clique.",
+        "Auto-teleport te leva para o próximo assim que uma espécie é concluída, e Auto-escolha invoca o melhor Pokémon da sua party para o alvo.",
+        "Caçar tudo estende a lista além das espécies que a Pokédex do jogo acompanha." ] }
+    }
+  };
+  function changelogEntry() {
+    var cur = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "";
+    var e = CHANGELOG[cur];
+    if (!e) return { title: t("wn_generic"), points: [] };
+    return e[currentLang()] || e.en;
+  }
+
   // ---------- Places (favorites + recent teleports), persisted in chrome.storage ----------
   var places = { favorites: [], recent: [] };
   var RECENT_MAX = 10;   // keep only the last 10 non-favorited teleports
   function storeGet(keys) { return new Promise(function (res) { try { chrome.storage.local.get(keys, function (v) { res(v || {}); }); } catch (e) { res({}); } }); }
   function storeSet(obj) { try { chrome.storage.local.set(obj); } catch (e) {} }
   async function loadPlaces() {
-    var v = await storeGet(["favorites", "recent", "autoLevelUp", "pdexAutoTp", "pdexAutoPick", "pdexHuntAll"]);
+    var v = await storeGet(["favorites", "recent", "autoLevelUp", "pdexAutoTp", "pdexAutoPick", "pdexHuntAll", "seenVersion"]);
     places.favorites = Array.isArray(v.favorites) ? v.favorites : [];
     places.recent = Array.isArray(v.recent) ? v.recent : [];
     autoLevelUp = !!v.autoLevelUp;
     pdexAutoTp = !!v.pdexAutoTp; pdexAutoPick = !!v.pdexAutoPick; pdexHuntAll = !!v.pdexHuntAll;
+    var cur = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "";
+    hasUpdate = !!cur && v.seenVersion !== cur;   // new install or updated since last opened
   }
 
   // When enabled: as the active Pokémon levels up and the XP plan's current band
@@ -197,8 +224,9 @@
       pdex_auto_tp_tip: "When a Pokémon is fully done (caught + 100 kills), automatically teleport to the next easiest one.",
       pdex_auto_pick_tip: "On each teleport, summon the best Pokémon in your party for that target.",
       pdex_hunt_all_tip: "The game's Pokédex tracks {n} species. Turn on to also hunt the rest of the catchable Pokémon.They don't count toward Pokédex completion.",
-      pdex_empty: "Pokédex complete! Nothing left to hunt.", pdex_todo_done: "All tracked species done — turn on Hunt all for more.",
+      pdex_empty: "Pokédex complete! Nothing left to hunt.", pdex_todo_done: "All tracked species done. Turn on Hunt all for more.",
       pdex_loading: "Loading Pokédex…", pdex_load_fail: "Couldn't load your Pokédex. Make sure you're logged in.",
+      news_updated: "Updated to <b>v{v}</b>", news_whatsnew: "What's new", wn_close: "Got it", wn_generic: "Improvements and fixes.",
       auto_label: "Auto level up",
       auto_tip: "Auto-teleports to the next best XP hunt as your Pokémon levels up.",
       cd_section: "Teleporting to next best match",
@@ -214,7 +242,7 @@
       search_ph: "Search a Pokémon to capture…", search_hint: "Start typing a Pokémon name to search.",
       search_none: "No match", cap_change: "Change", cap_quality: "Quality ⓘ",
       cap_fastest: "Fastest catch", cap_slow: "Takes too long (10+ hits)",
-      cap_not_loaded: "Your Pokémon list hasn't loaded yet — open your team once in-game.",
+      cap_not_loaded: "Your Pokémon list hasn't loaded yet. Open your team once in-game.",
       cap_none_damage: "None of your Pokémon can damage this target.",
       quality_title: "Quality on capture", quality_note: "Same odds for every capture. Perfect (1.800): 0.29%.",
       q_legendary: "Legendary", q_epic: "Epic", q_rare: "Rare", q_uncommon: "Uncommon", q_common: "Common", q_weak: "Weak",
@@ -231,8 +259,9 @@
       pdex_auto_tp_tip: "Quando um Pokémon é concluído (capturado + 100 kills), teleporta automaticamente para o próximo mais fácil.",
       pdex_auto_pick_tip: "A cada teleporte, invoca o melhor Pokémon da sua party para aquele alvo.",
       pdex_hunt_all_tip: "A Pokédex do jogo cobre {n} espécies. Ative para também caçar o resto dos Pokémon capturáveis. Eles não contam para completar a Pokédex.",
-      pdex_empty: "Pokédex completa! Nada para caçar.", pdex_todo_done: "Todas as espécies da Pokédex concluídas — ative Hunt all para mais.",
+      pdex_empty: "Pokédex completa! Nada para caçar.", pdex_todo_done: "Todas as espécies da Pokédex concluídas. Ative Hunt all para mais.",
       pdex_loading: "Carregando Pokédex…", pdex_load_fail: "Não foi possível carregar sua Pokédex. Confira se você está logado.",
+      news_updated: "Atualizado para <b>v{v}</b>", news_whatsnew: "Novidades", wn_close: "Entendi", wn_generic: "Melhorias e correções.",
       auto_label: "Auto level up",
       auto_tip: "Teleporta automaticamente para o melhor hunt de XP conforme seu Pokémon sobe de level.",
       cd_section: "Teleportando para a próxima melhor escolha",
@@ -248,7 +277,7 @@
       search_ph: "Busque um Pokémon para capturar…", search_hint: "Comece a digitar o nome de um Pokémon.",
       search_none: "Nenhum resultado", cap_change: "Trocar", cap_quality: "Quality ⓘ",
       cap_fastest: "Captura mais rápida", cap_slow: "Demora demais (10+ hits)",
-      cap_not_loaded: "Sua lista de Pokémon ainda não carregou — abra sua equipe uma vez no jogo.",
+      cap_not_loaded: "Sua lista de Pokémon ainda não carregou. Abra sua equipe uma vez no jogo.",
       cap_none_damage: "Nenhum dos seus Pokémon causa dano a este alvo.",
       quality_title: "Quality on capture", quality_note: "Mesmas chances em toda captura. Perfeito (1.800): 0,29%.",
       q_legendary: "Lendário", q_epic: "Épico", q_rare: "Raro", q_uncommon: "Incomum", q_common: "Comum", q_weak: "Fraco",
@@ -530,7 +559,7 @@
   var FALLBACK_CSS =
     ":host{all:initial}*{box-sizing:border-box;font-family:system-ui,sans-serif}" +
     ".pr-backdrop{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center}" +
-    ".pr-modal{width:min(600px,95vw);max-height:88vh;overflow:hidden;display:flex;flex-direction:column;background:#000;color:#fff;border:1px solid #2a2140;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.7)}" +
+    ".pr-modal{position:relative;width:min(600px,95vw);max-height:88vh;overflow:hidden;display:flex;flex-direction:column;background:#000;color:#fff;border:1px solid #2a2140;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.7)}" +
     ".pr-head{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:16px 16px 12px;border-bottom:1px solid #7b3ff233}" +
     ".pr-logo-link{display:inline-flex;cursor:pointer}.pr-logo{height:46px;width:auto;max-width:82%;object-fit:contain;display:block}.pr-close{position:absolute;top:10px;right:12px;cursor:pointer;background:none;border:none;color:#b9a7e6;font-size:15px}" +
     ".pr-hero{display:flex;align-items:center;gap:12px;margin:12px 12px 4px;padding:10px 12px;border-radius:12px;background:#100c1c;border:1px solid #241d38}.pr-hero:empty{display:none}" +
@@ -572,6 +601,18 @@
     ".pr-switch{flex:0 0 auto;cursor:pointer;width:28px;height:16px;border-radius:999px;border:1px solid #4a3d6b;background:#1a1330;padding:0;position:relative;transition:background .18s ease,border-color .18s ease}" +
     ".pr-switch.on{background:#7b3ff2;border-color:#7b3ff2}" +
     ".pr-switch-knob{position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:999px;background:#fff;transition:transform .18s ease}.pr-switch.on .pr-switch-knob{transform:translateX(12px)}" +
+    ".pr-newsbar[hidden]{display:none}.pr-newsbar{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:12px;font-weight:700;color:#201400;background:linear-gradient(90deg,#f0c040,#ffdf80)}" +
+    ".pr-news-msg{flex:1 1 auto}.pr-news-msg b{font-weight:900}" +
+    ".pr-news-btn{flex:0 0 auto;cursor:pointer;font-weight:800;font-size:11px;color:#fff;background:#1a1226;border:none;padding:6px 13px;border-radius:999px}.pr-news-btn:hover{background:#000}" +
+    ".pr-news-x{flex:0 0 auto;cursor:pointer;background:none;border:none;color:#6b560f;font-size:13px;line-height:1}" +
+    ".pr-wn{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.72)}" +
+    ".pr-wn-box{width:min(430px,94%);max-height:84%;overflow-y:auto;background:#000;border:1px solid #2a2140;border-radius:16px;padding:18px 20px 16px;box-shadow:0 24px 70px rgba(0,0,0,.7)}" +
+    ".pr-wn-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}.pr-wn-logo{height:26px;width:auto;object-fit:contain;display:block}" +
+    ".pr-wn-ver{font-size:11px;font-weight:800;color:#201400;background:linear-gradient(90deg,#f0c040,#ffdf80);padding:2px 9px;border-radius:999px}" +
+    ".pr-wn-eyebrow{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#b98cff;margin-bottom:4px}" +
+    ".pr-wn-feature{font-size:18px;font-weight:800;color:#fff;margin-bottom:11px}" +
+    ".pr-wn-list{margin:0 0 16px;padding-left:18px;color:#cfc6e6;font-size:13px;line-height:1.6}.pr-wn-list li{margin-bottom:7px}" +
+    ".pr-wn-close{cursor:pointer;display:block;width:100%;padding:10px;border-radius:11px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:#7b3ff2;border:1px solid #a35bff}.pr-wn-close:hover{background:#8f57ff}" +
     ".pr-opt-unit{display:inline-flex;align-items:center;gap:6px}.pr-opt-multi{justify-content:space-between;gap:8px;flex-wrap:wrap}" +
     ".pr-tip-r .pr-opt-tipbox{left:auto;right:0}.pr-tip-c .pr-opt-tipbox{left:50%;transform:translateX(-50%)}" +
     ".pr-pdex-chip,.pr-pdex-kills{font-size:11px;font-weight:700;color:#8a829f}.pr-pdex-chip.pr-pdex-on,.pr-pdex-kills.pr-pdex-on{color:#63d873}" +
@@ -616,6 +657,7 @@
             '<img class="pr-logo" src="' + url("assets/pokehunt-logo.png") + '" alt="Poke Hunt">' +
           '</a>' +
           '<button class="pr-close" title="' + t("close") + '">✕</button></header>' +
+        '<div class="pr-newsbar" hidden></div>' +
         '<div class="pr-hero"></div>' +
         '<div class="pr-tabs">' +
           '<button class="pr-tab" data-tab="xp">' + t("tab_xp") + '</button>' +
@@ -782,6 +824,7 @@
       t.classList.toggle("pr-tab-on", t.getAttribute("data-tab") === currentTab);
     });
 
+    renderNewsbar();  // "what's new" banner on the first open after an update
     renderOptbar();   // options bar (XP Auto level up, Pokedex toggles)
     ensurePdexPoll(); // start/stop the Pokedex poll based on the active tab
 
@@ -1315,6 +1358,8 @@
 
   function open() {
     ensureModal();
+    justUpdated = hasUpdate;                 // first open after an update -> show the news banner
+    clearUpdateBadge();                      // opening the panel marks this version as seen
     if (!account.detected) loadAccount();   // last chance to pick up VIP/clan/trainer
     host.style.display = "block";
     render({ center: true });
@@ -1334,9 +1379,83 @@
   function toggle() { isOpen() ? close() : open(); }
 
   // ---------- dock button ----------
+  // page-level styles for our dock button's "what's new" arrow (lives in the game's
+  // DOM, not the shadow root). Mirrors the game's own .dock-news-arrow exactly.
+  function ensureDockStyle() {
+    if (document.getElementById("poke-hunt-dock-style")) return;
+    var st = document.createElement("style");
+    st.id = "poke-hunt-dock-style";
+    st.textContent =
+      '[data-guide="dock-poke-route"]{position:relative}' +
+      '.pr-dock-arrow{position:absolute;bottom:-22px;left:50%;z-index:30;pointer-events:none;animation:pr-dock-arrow .7s ease-in-out infinite}' +
+      '.pr-dock-arrow svg{width:24px;height:24px;display:block;fill:#ff2b2b;filter:drop-shadow(0 0 5px #ff2b2b) drop-shadow(0 0 11px #ff2b2bcc) drop-shadow(0 2px 3px #000000e6)}' +
+      '@keyframes pr-dock-arrow{0%,100%{opacity:1;transform:translate(-50%) translateY(0) scale(1)}50%{opacity:.4;transform:translate(-50%) translateY(-8px) scale(1.12)}}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+  function addDockArrow(btn) {
+    if (!hasUpdate || btn.querySelector(".pr-dock-arrow")) return;
+    ensureDockStyle();
+    var a = document.createElement("span");
+    a.className = "pr-dock-arrow";
+    a.setAttribute("aria-hidden", "true");
+    a.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 3 20 13h-5v7H9v-7H4z"/></svg>';
+    btn.appendChild(a);
+  }
+  // called when the panel opens: mark this version seen and drop the arrow
+  function clearUpdateBadge() {
+    if (!hasUpdate) return;
+    hasUpdate = false;
+    var cur = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "";
+    if (cur) storeSet({ seenVersion: cur });
+    var a = document.querySelector('[data-guide="dock-poke-route"] .pr-dock-arrow');
+    if (a) a.remove();
+  }
+
+  // new-version banner shown once (this session) on the first open after an update
+  function renderNewsbar() {
+    var nb = shadow.querySelector(".pr-newsbar");
+    if (!nb) return;
+    if (!justUpdated) { nb.hidden = true; nb.innerHTML = ""; return; }
+    var cur = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "";
+    nb.hidden = false;
+    nb.innerHTML =
+      '<span class="pr-news-msg">' + t("news_updated", { v: cur }) + '</span>' +
+      '<button class="pr-news-btn" type="button">' + t("news_whatsnew") + '</button>' +
+      '<button class="pr-news-x" type="button" title="' + t("close") + '">✕</button>';
+    nb.querySelector(".pr-news-btn").addEventListener("click", showWhatsNew);
+    nb.querySelector(".pr-news-x").addEventListener("click", function () { justUpdated = false; renderNewsbar(); });
+  }
+
+  // text-only "what's new" modal: an overlay over the panel listing this version's features
+  function showWhatsNew() {
+    var modal = shadow.querySelector(".pr-modal");
+    if (!modal || modal.querySelector(".pr-wn")) return;
+    var cur = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "";
+    var entry = changelogEntry();
+    var points = entry.points.map(function (l) { return '<li>' + esc(l) + '</li>'; }).join("");
+    var ov = document.createElement("div");
+    ov.className = "pr-wn";
+    ov.innerHTML =
+      '<div class="pr-wn-box">' +
+        '<div class="pr-wn-head">' +
+          '<img class="pr-wn-logo" src="' + url("assets/pokehunt-logo.png") + '" alt="Poke Hunt">' +
+          '<span class="pr-wn-ver">v' + esc(cur) + '</span>' +
+        '</div>' +
+        '<div class="pr-wn-eyebrow">' + t("news_whatsnew") + '</div>' +
+        '<div class="pr-wn-feature">' + esc(entry.title) + '</div>' +
+        (points ? '<ul class="pr-wn-list">' + points + '</ul>' : '') +
+        '<button class="pr-wn-close" type="button">' + t("wn_close") + '</button>' +
+      '</div>';
+    ov.addEventListener("click", function (e) { if (e.target === ov) ov.remove(); });
+    ov.querySelector(".pr-wn-close").addEventListener("click", function () { ov.remove(); });
+    modal.appendChild(ov);
+  }
+
   function injectButton() {
     var dock = document.querySelector('nav.game-dock, [data-guide="dock"]');
-    if (!dock || dock.querySelector('[data-guide="dock-poke-route"]')) return;
+    if (!dock) return;
+    var existing = dock.querySelector('[data-guide="dock-poke-route"]');
+    if (existing) { addDockArrow(existing); return; }   // keep the arrow in sync if the dock re-rendered
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "dock-btn";
@@ -1350,6 +1469,7 @@
     var anchor = dock.querySelector('[data-guide="dock-analyzer"]');
     if (anchor && anchor.nextSibling) dock.insertBefore(btn, anchor.nextSibling);
     else dock.appendChild(btn);
+    addDockArrow(btn);
   }
 
   // ask the game to (re)send current boosts + pokes so we have fresh state
