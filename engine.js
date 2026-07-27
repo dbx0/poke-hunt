@@ -511,11 +511,13 @@
                huntLevel: c.huntLevel, spritePokeId: spriteIdOf(c), type1: c.type1, type2: c.type2 };
     }
 
-    // Pokedex to-do lists from the game's /api/game/pokedex response.
-    //   todo   = species in the response not yet complete (caught && kills>=unlockKills)
-    //   beyond = huntable species NOT in the response (the game's dex doesn't track them)
-    // Both are limited to huntable species (need a teleport target), sorted easiest first
-    // (hunt level asc). Memoized on the response signature so tab switches are instant.
+    // Pokedex to-do list, built from EVERY huntable creature (one that has a hunt to
+    // teleport to), merged with the player's per-species status from /api/game/pokedex.
+    // The API only returns species the player has already touched; every other huntable
+    // creature counts as 0 kills / uncaught. Non-huntable creatures (obtained by evolving,
+    // fishing, or events) are excluded — there is nowhere to teleport them. Species that
+    // are fully complete (caught && kills>=unlockKills) are hidden. Sorted easiest first
+    // (hunt level asc, then name). Memoized on the status signature so tab switches are instant.
     function pdexItem(h, kills, caught, unlockKills) {
       var c = h.creature;
       return { pokeId: c.pokeId, name: h.name || c.name, huntLevel: c.huntLevel,
@@ -523,28 +525,22 @@
                kills: kills, caught: !!caught, unlockKills: unlockKills };
     }
     function pokedexPlan(dex) {
-      if (!dex || !dex.species) return { todo: [], beyond: [], total: 0, unlockKills: 100 };
+      dex = dex || {};
       var unlockKills = dex.unlockKills || 100;
-      var species = dex.species;
+      var species = dex.species || [];
       var sig = unlockKills + ";" + species.map(function (s) { return s.id + ":" + s.kills + ":" + (s.caught ? 1 : 0); }).join(",");
       if (pdexCache.key === sig) return pdexCache.val;
-      var inDex = {};
+      var status = {};   // pokeId -> { kills, caught }, from the API (touched species only)
+      species.forEach(function (s) { status[s.id] = { kills: s.kills || 0, caught: !!s.caught }; });
       var todo = [];
-      species.forEach(function (s) {
-        inDex[s.id] = true;
-        if (s.caught && s.kills >= unlockKills) return;    // fully complete -> hide
-        var h = huntByPokeId.get(s.id);
-        if (!h) return;                                    // not huntable -> can't teleport
-        todo.push(pdexItem(h, s.kills || 0, s.caught, unlockKills));
-      });
-      var beyond = [];
       huntByPokeId.forEach(function (h, pid) {
-        if (inDex[pid]) return;
-        beyond.push(pdexItem(h, 0, false, unlockKills));
+        var st = status[pid] || { kills: 0, caught: false };
+        if (st.caught && st.kills >= unlockKills) return;   // fully complete -> hide
+        todo.push(pdexItem(h, st.kills, st.caught, unlockKills));
       });
       var byLevel = function (a, b) { return a.huntLevel - b.huntLevel || a.name.localeCompare(b.name); };
-      todo.sort(byLevel); beyond.sort(byLevel);
-      var val = { todo: todo, beyond: beyond, total: species.length, unlockKills: unlockKills };
+      todo.sort(byLevel);
+      var val = { todo: todo, total: huntByPokeId.size, unlockKills: unlockKills };
       pdexCache = { key: sig, val: val };
       return val;
     }

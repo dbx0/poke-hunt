@@ -31,7 +31,7 @@
 
   // ---------- Pokedex tab ----------
   var pokedex = null;                      // { unlockKills, species:[...], at } from /api/game/pokedex
-  var pdexAutoTp = false, pdexAutoPick = false, pdexHuntAll = false; // toggles (persisted)
+  var pdexAutoTp = false, pdexAutoPick = false; // toggles (persisted)
   var pdexActive = null;                   // pokeId of the current auto-teleport target
   var pdexTimer = null;                    // ~10s poll interval
   var pdexTermSet = null;                  // baseline of "leave here" pokeIds; a NEW one triggers advance
@@ -49,20 +49,21 @@
   var CHANGELOG = {
     "0.8.0": {
       en: { title: "Pokédex tab", points: [
-        "A new tab lists every Pokémon you still need to finish for the Pokédex (100 kills and a capture), sorted from easiest to hardest, each with a one-click teleport.",
-        "Auto-teleport moves you to the next one the moment a species is complete, and Auto-pick summons the best Pokémon in your party for the target.",
-        "Hunt all extends the list beyond the species the game's Pokédex tracks." ] },
+        "A new tab lists every huntable Pokémon you still need to finish for the Pokédex (100 kills and a capture), sorted from easiest to hardest, each with a one-click teleport.",
+        "Auto-teleport moves you to the next one the moment a species is complete, and Auto-pick summons the best Pokémon in your party for the target." ] },
       pt: { title: "Aba Pokédex", points: [
-        "Uma nova aba lista todos os Pokémon que faltam para completar a Pokédex (100 kills e uma captura), do mais fácil ao mais difícil, cada um com teleporte em um clique.",
-        "Auto-teleport te leva para o próximo assim que uma espécie é concluída, e Auto-escolha invoca o melhor Pokémon da sua party para o alvo.",
-        "Caçar tudo estende a lista além das espécies que a Pokédex do jogo acompanha." ] },
+        "Uma nova aba lista todos os Pokémon caçáveis que faltam para completar a Pokédex (100 kills e uma captura), do mais fácil ao mais difícil, cada um com teleporte em um clique.",
+        "Auto-teleport te leva para o próximo assim que uma espécie é concluída, e Auto-escolha invoca o melhor Pokémon da sua party para o alvo." ] },
       fixes: [
         { v: "0.8.1",
           en: "Pokédex auto-teleport no longer gets stuck at 100 kills when a species can't be caught: if auto-catch is off or you're out of the selected catch ball, it moves on to the next species that still needs kills.",
           pt: "O auto-teleporte da Pokédex não trava mais nos 100 kills quando uma espécie não pode ser capturada: se a autocaptura estiver desligada ou você estiver sem a ball selecionada, ele vai para a próxima espécie que ainda precisa de kills." },
-        { v: "0.8.2",
-          en: "Pokédex auto-teleport now prioritizes species that already have 100 kills and only need a catch, instead of skipping them for a fresh hunt.",
-          pt: "O auto-teleporte da Pokédex agora prioriza espécies que já têm 100 kills e só precisam de uma captura, em vez de pulá-las para uma caça nova." }
+        { v: "0.8.3",
+          en: "The Pokédex list now includes every huntable species you still need, even ones you haven't started yet.",
+          pt: "A lista da Pokédex agora inclui todas as espécies caçáveis que faltam, mesmo as que você ainda não começou." },
+        { v: "0.8.3",
+          en: "Fixed the XP tab's Auto level up and the Pokédex Auto-teleport fighting over where to send you — turning one on now turns the other off.",
+          pt: "Corrigido o conflito entre o Auto-level up da aba de XP e o Auto-teleporte da Pokédex, que disputavam para onde te enviar; ativar um agora desliga o outro." }
       ]
     }
   };
@@ -86,11 +87,14 @@
   function storeGet(keys) { return new Promise(function (res) { try { chrome.storage.local.get(keys, function (v) { res(v || {}); }); } catch (e) { res({}); } }); }
   function storeSet(obj) { try { chrome.storage.local.set(obj); } catch (e) {} }
   async function loadPlaces() {
-    var v = await storeGet(["favorites", "recent", "autoLevelUp", "pdexAutoTp", "pdexAutoPick", "pdexHuntAll", "seenVersion"]);
+    var v = await storeGet(["favorites", "recent", "autoLevelUp", "pdexAutoTp", "pdexAutoPick", "seenVersion"]);
     places.favorites = Array.isArray(v.favorites) ? v.favorites : [];
     places.recent = Array.isArray(v.recent) ? v.recent : [];
     autoLevelUp = !!v.autoLevelUp;
-    pdexAutoTp = !!v.pdexAutoTp; pdexAutoPick = !!v.pdexAutoPick; pdexHuntAll = !!v.pdexHuntAll;
+    pdexAutoTp = !!v.pdexAutoTp; pdexAutoPick = !!v.pdexAutoPick;
+    // the two auto-teleport modes are mutually exclusive; a legacy state with both on
+    // makes them fight over where to send the player. Keep Pokedex mode, drop XP auto-level.
+    if (autoLevelUp && pdexAutoTp) { autoLevelUp = false; storeSet({ autoLevelUp: false }); }
     var cur = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "";
     hasUpdate = !!cur && v.seenVersion !== cur;   // new install or updated since last opened
   }
@@ -101,7 +105,7 @@
   // actually differs, so a Pokémon sitting in its top band (e.g. 150+, on a plateau
   // where every level maps to the same best hunt) never teleports.
   function autoLevelTick() {
-    if (!autoLevelUp || !engine || autoTeleporting) return;
+    if (!autoLevelUp || pdexAutoTp || !engine || autoTeleporting) return;   // Pokedex auto-teleport takes precedence
     var poke = readActivePoke();
     if (!poke) return;
     var sp = norm(poke.name);
@@ -236,13 +240,12 @@
     en: {
       tab_xp: "XP farm", tab_loot: "Loot farm", tab_capture: "Capture", tab_pokedex: "Pokédex", tab_favorites: "Favorites",
       close: "Close", cancel: "Cancel", credit_created: "created with", credit_by: "by", support: "support me",
-      pdex_todo: "Pokédex to-do", pdex_beyond: "Beyond the Pokédex",
+      pdex_todo: "Pokédex to-do",
       pdex_caught: "caught ✓", pdex_notcaught: "not caught", pdex_progress: "{k}/{n} kills",
-      pdex_auto_tp: "Auto-teleport", pdex_auto_pick: "Auto-pick", pdex_hunt_all: "Hunt all",
+      pdex_auto_tp: "Auto-teleport", pdex_auto_pick: "Auto-pick",
       pdex_auto_tp_tip: "When a Pokémon is fully done (caught + 100 kills), automatically teleport to the next easiest one.",
       pdex_auto_pick_tip: "On each teleport, summon the best Pokémon in your party for that target.",
-      pdex_hunt_all_tip: "The game's Pokédex tracks {n} species. Turn on to also hunt the rest of the catchable Pokémon.They don't count toward Pokédex completion.",
-      pdex_empty: "Pokédex complete! Nothing left to hunt.", pdex_todo_done: "All tracked species done. Turn on Hunt all for more.",
+      pdex_empty: "Pokédex complete! Nothing left to hunt.",
       pdex_loading: "Loading Pokédex…", pdex_load_fail: "Couldn't load your Pokédex. Make sure you're logged in.",
       news_updated: "Updated to <b>v{v}</b>", news_whatsnew: "What's new", wn_close: "Got it", wn_generic: "Improvements and fixes.", wn_fixes: "Fixes since then",
       auto_label: "Auto level up",
@@ -271,13 +274,12 @@
     pt: {
       tab_xp: "Farm de XP", tab_loot: "Farm de loot", tab_capture: "Captura", tab_pokedex: "Pokédex", tab_favorites: "Favoritos",
       close: "Fechar", cancel: "Cancelar", credit_created: "feito com", credit_by: "por", support: "me apoiar",
-      pdex_todo: "Faltando na Pokédex", pdex_beyond: "Além da Pokédex",
+      pdex_todo: "Faltando na Pokédex",
       pdex_caught: "capturado ✓", pdex_notcaught: "não capturado", pdex_progress: "{k}/{n} kills",
-      pdex_auto_tp: "Auto-teleporte", pdex_auto_pick: "Escolha automática", pdex_hunt_all: "Caçar tudo",
+      pdex_auto_tp: "Auto-teleporte", pdex_auto_pick: "Escolha automática",
       pdex_auto_tp_tip: "Quando um Pokémon é concluído (capturado + 100 kills), teleporta automaticamente para o próximo mais fácil.",
       pdex_auto_pick_tip: "A cada teleporte, invoca o melhor Pokémon da sua party para aquele alvo.",
-      pdex_hunt_all_tip: "A Pokédex do jogo cobre {n} espécies. Ative para também caçar o resto dos Pokémon capturáveis. Eles não contam para completar a Pokédex.",
-      pdex_empty: "Pokédex completa! Nada para caçar.", pdex_todo_done: "Todas as espécies da Pokédex concluídas. Ative Hunt all para mais.",
+      pdex_empty: "Pokédex completa! Nada para caçar.",
       pdex_loading: "Carregando Pokédex…", pdex_load_fail: "Não foi possível carregar sua Pokédex. Confira se você está logado.",
       news_updated: "Atualizado para <b>v{v}</b>", news_whatsnew: "Novidades", wn_close: "Entendi", wn_generic: "Melhorias e correções.", wn_fixes: "Correções desde então",
       auto_label: "Auto level up",
@@ -794,7 +796,13 @@
       var sw = bar.querySelector(".pr-switch");
       sw.addEventListener("click", function () {
         autoLevelUp = !autoLevelUp;
-        storeSet({ autoLevelUp: autoLevelUp });
+        var patch = { autoLevelUp: autoLevelUp };
+        // mutually exclusive with Pokedex auto-teleport: enabling this turns that off
+        if (autoLevelUp && pdexAutoTp) {
+          pdexAutoTp = false; patch.pdexAutoTp = false;
+          pdexActive = null; pdexTermSet = null; ensurePdexPoll();   // stop the pokedex poll
+        }
+        storeSet(patch);
         sw.classList.toggle("on", autoLevelUp);
         sw.setAttribute("aria-checked", autoLevelUp ? "true" : "false");
         if (autoLevelUp) { autoSlug = null; autoLevelTick(); }   // sync to current spot on enable
@@ -803,19 +811,20 @@
     }
     if (currentTab === "pokedex") {
       bar.hidden = false;
-      var n = pokedex ? pokedex.species.length : 0;
       bar.innerHTML =
         '<div class="pr-opt pr-opt-multi">' +
           optUnit("pdexAutoTp", t("pdex_auto_tp"), pdexAutoTp, t("pdex_auto_tp_tip"), "l") +
-          optUnit("pdexAutoPick", t("pdex_auto_pick"), pdexAutoPick, t("pdex_auto_pick_tip"), "c") +
-          optUnit("pdexHuntAll", t("pdex_hunt_all"), pdexHuntAll, t("pdex_hunt_all_tip", { n: n }), "r") +
+          optUnit("pdexAutoPick", t("pdex_auto_pick"), pdexAutoPick, t("pdex_auto_pick_tip"), "r") +
         '</div>';
       bar.querySelectorAll(".pr-switch[data-opt]").forEach(function (sw) {
         sw.addEventListener("click", function () {
           var key = sw.getAttribute("data-opt");
-          var val = !(key === "pdexAutoTp" ? pdexAutoTp : key === "pdexAutoPick" ? pdexAutoPick : pdexHuntAll);
-          if (key === "pdexAutoTp") pdexAutoTp = val; else if (key === "pdexAutoPick") pdexAutoPick = val; else pdexHuntAll = val;
-          var o = {}; o[key] = val; storeSet(o);
+          var val = !(key === "pdexAutoTp" ? pdexAutoTp : pdexAutoPick);
+          if (key === "pdexAutoTp") pdexAutoTp = val; else pdexAutoPick = val;
+          var o = {}; o[key] = val;
+          // mutually exclusive with XP auto-level-up: enabling Pokedex auto-teleport turns that off
+          if (key === "pdexAutoTp" && val && autoLevelUp) { autoLevelUp = false; o.autoLevelUp = false; }
+          storeSet(o);
           sw.classList.toggle("on", val); sw.setAttribute("aria-checked", val ? "true" : "false");
           if (key === "pdexAutoTp") { if (val) loadAutoHelper(); pdexTermSet = val && pokedex ? terminalIds() : null; pdexActive = null; ensurePdexPoll(); }
           // Hunt all only changes the auto-teleport scope, not the visible list — no re-render needed
@@ -1282,31 +1291,22 @@
     if (plan !== pdexLastPlan) renderPokedex(shadow.querySelector(".pr-body"));
   }
 
-  // ordered auto-teleport list (to-do, then Beyond if Hunt all)
+  // ordered auto-teleport list: the full to-do (every huntable species needing work)
   function pdexList() {
     if (!engine || !pokedex) return [];
-    var plan = engine.pokedexPlan(pokedex);
-    return plan.todo.concat(pdexHuntAll ? plan.beyond : []);
+    return engine.pokedexPlan(pokedex).todo;
   }
-  // species auto-teleport may move to: everything still ACTIONABLE (not terminal).
-  // A species at the kill cap but not yet caught stays a valid target when the player
-  // CAN catch (auto-catch on + balls) — being at its hunt is what lets auto-catch finish
-  // it, and it's one catch from done, so it's preferred over species that still need kills.
+  // species auto-teleport may move to: everything still ACTIONABLE (not terminal), in
+  // the SAME order as the displayed list (to-do by level+name, then Beyond if Hunt all)
+  // — so auto-teleport always goes to the first thing the user sees that still needs work.
+  // A capped-but-uncaught species the player CAN still catch stays in its list position.
   // Terminal species (done, or capped & uncatchable) are excluded so we never bounce back.
   function pdexTargets() {
     var blocked = catchBlocked();
-    var list = pdexList().filter(function (it) {
+    return pdexList().filter(function (it) {
       var capped = (it.kills || 0) >= (it.unlockKills || 100);
-      return !(capped && (it.caught || blocked));            // keep only non-terminal
+      return !(capped && (it.caught || blocked));            // keep only non-terminal, keep order
     });
-    // catch-only species first (capped, uncaught → one catch from done), each group
-    // easiest-first; a near-done Mankey (100/100) thus wins over a fresh Shellder (13/100).
-    list.sort(function (a, b) {
-      var ac = (a.kills || 0) >= (a.unlockKills || 100) ? 0 : 1;
-      var bc = (b.kills || 0) >= (b.unlockKills || 100) ? 0 : 1;
-      return ac - bc || (a.huntLevel || 0) - (b.huntLevel || 0);
-    });
-    return list;
   }
   // pokeIds we should NOT keep sitting on: fully done (caught AND >= unlockKills), or
   // at the kill cap but uncatchable (auto-catch off / out of the selected ball). The
@@ -1324,9 +1324,9 @@
   // Auto-teleport advances when a species newly becomes "leave here" since the last
   // check — either it completed (caught + cap) or it hit the cap while the player
   // can't catch (auto-catch off / no balls). Never advances just because auto-teleport
-  // was turned on: the first poll establishes the baseline. We move to the best actionable
-  // target (catch-only species first, then by level); if nothing is actionable (everything
-  // left is capped-but-uncatchable) we stay put until balls/auto-catch come back.
+  // was turned on: the first poll establishes the baseline. We move to the first still-
+  // actionable species in the DISPLAYED order (same list the user sees), skipping the one
+  // we're already on; if nothing is actionable we stay put until balls/auto-catch return.
   function pdexTick() {
     if (!pdexAutoTp || autoTeleporting || !pokedex) return;
     var term = terminalIds();
@@ -1384,32 +1384,16 @@
     var plan = engine.pokedexPlan(pokedex);
     pdexLastPlan = plan;                                     // mark what's on screen (poll skips re-render if unchanged)
     var html = "";
-    if (!plan.todo.length && !(pdexHuntAll && plan.beyond.length) && !plan.beyond.length) {
+    if (!plan.todo.length) {
       html = '<div class="pr-empty">' + t("pdex_empty") + '</div>';
     } else {
       html += '<div class="pr-section">' + t("pdex_todo") + '</div>';
-      html += plan.todo.length ? plan.todo.map(pdexCard).join("") : '<div class="pr-empty">' + t("pdex_todo_done") + '</div>';
-      if (plan.beyond.length) {
-        var open = collapsed.pdexBeyond === false;             // default collapsed
-        html += '<button class="pr-collapse" type="button" data-key="pdexBeyond" aria-expanded="' + open + '">' +
-          '<span class="pr-collapse-arrow">' + (open ? "▾" : "▸") + '</span> ' + t("pdex_beyond") +
-          '<span class="pr-collapse-n">' + plan.beyond.length + '</span></button>' +
-          '<div class="pr-below' + (open ? "" : " pr-collapsed") + '" data-key="pdexBeyond">' +
-            plan.beyond.map(pdexCard).join("") + '</div>';
-      }
+      html += plan.todo.map(pdexCard).join("");
     }
     body.innerHTML = html;
 
     body.querySelectorAll("img.pr-ico").forEach(function (img) {
       img.addEventListener("error", function () { img.classList.add("pr-ico-off"); });
-    });
-    var bc = body.querySelector('.pr-collapse[data-key="pdexBeyond"]');
-    if (bc) bc.addEventListener("click", function () {
-      collapsed.pdexBeyond = collapsed.pdexBeyond === false ? true : false; // toggle (default collapsed)
-      var o = collapsed.pdexBeyond === false;
-      body.querySelector('.pr-below[data-key="pdexBeyond"]').classList.toggle("pr-collapsed", !o);
-      bc.setAttribute("aria-expanded", o ? "true" : "false");
-      bc.querySelector(".pr-collapse-arrow").textContent = o ? "▾" : "▸";
     });
     body.querySelectorAll(".pr-tp").forEach(function (btn) {
       btn.addEventListener("click", function () {
