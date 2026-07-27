@@ -65,8 +65,8 @@
           en: "Fixed the XP tab's Auto level up and the Pokédex Auto-teleport fighting over where to send you — turning one on now turns the other off.",
           pt: "Corrigido o conflito entre o Auto-level up da aba de XP e o Auto-teleporte da Pokédex, que disputavam para onde te enviar; ativar um agora desliga o outro." },
         { v: "0.8.4",
-          en: "Fixed Teleport sometimes sending you to the wrong hunt (e.g. Paras landing you on Squirtle) — it now matches the exact hunt in any game language.",
-          pt: "Corrigido o Teleporte às vezes te levar para a caça errada (ex.: Paras te jogando no Squirtle); agora ele acerta a caça exata em qualquer idioma do jogo." }
+          en: "Fixed Teleport sometimes sending you to the wrong hunt.",
+          pt: "Corrigido o Teleporte às vezes te levar para a caça errada." }
       ]
     }
   };
