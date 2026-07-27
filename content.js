@@ -31,7 +31,7 @@
 
   // ---------- Pokedex tab ----------
   var pokedex = null;                      // { unlockKills, species:[...], at } from /api/game/pokedex
-  var pdexAutoTp = false, pdexAutoPick = false; // toggles (persisted)
+  var pdexAutoTp = false, pdexAutoPick = false, pdexSkipCatch = false; // toggles (persisted)
   var pdexActive = null;                   // pokeId of the current auto-teleport target
   var pdexTimer = null;                    // ~10s poll interval
   var pdexTermSet = null;                  // baseline of "leave here" pokeIds; a NEW one triggers advance
@@ -90,11 +90,11 @@
   function storeGet(keys) { return new Promise(function (res) { try { chrome.storage.local.get(keys, function (v) { res(v || {}); }); } catch (e) { res({}); } }); }
   function storeSet(obj) { try { chrome.storage.local.set(obj); } catch (e) {} }
   async function loadPlaces() {
-    var v = await storeGet(["favorites", "recent", "autoLevelUp", "pdexAutoTp", "pdexAutoPick", "seenVersion"]);
+    var v = await storeGet(["favorites", "recent", "autoLevelUp", "pdexAutoTp", "pdexAutoPick", "pdexSkipCatch", "seenVersion"]);
     places.favorites = Array.isArray(v.favorites) ? v.favorites : [];
     places.recent = Array.isArray(v.recent) ? v.recent : [];
     autoLevelUp = !!v.autoLevelUp;
-    pdexAutoTp = !!v.pdexAutoTp; pdexAutoPick = !!v.pdexAutoPick;
+    pdexAutoTp = !!v.pdexAutoTp; pdexAutoPick = !!v.pdexAutoPick; pdexSkipCatch = !!v.pdexSkipCatch;
     // the two auto-teleport modes are mutually exclusive; a legacy state with both on
     // makes them fight over where to send the player. Keep Pokedex mode, drop XP auto-level.
     if (autoLevelUp && pdexAutoTp) { autoLevelUp = false; storeSet({ autoLevelUp: false }); }
@@ -245,9 +245,10 @@
       close: "Close", cancel: "Cancel", credit_created: "created with", credit_by: "by", support: "support me",
       pdex_todo: "Pokédex to-do",
       pdex_caught: "caught ✓", pdex_notcaught: "not caught", pdex_progress: "{k}/{n} kills",
-      pdex_auto_tp: "Auto-teleport", pdex_auto_pick: "Auto-pick",
+      pdex_auto_tp: "Auto-teleport", pdex_auto_pick: "Auto-pick", pdex_skip_catch: "Skip catch",
       pdex_auto_tp_tip: "When a Pokémon is fully done (caught + 100 kills), automatically teleport to the next easiest one.",
       pdex_auto_pick_tip: "On each teleport, summon the best Pokémon in your party for that target.",
+      pdex_skip_catch_tip: "Auto-teleport moves on once a species reaches 100 kills, without waiting to catch it.",
       pdex_empty: "Pokédex complete! Nothing left to hunt.",
       pdex_loading: "Loading Pokédex…", pdex_load_fail: "Couldn't load your Pokédex. Make sure you're logged in.",
       news_updated: "Updated to <b>v{v}</b>", news_whatsnew: "What's new", wn_close: "Got it", wn_generic: "Improvements and fixes.", wn_fixes: "Fixes since then",
@@ -279,9 +280,10 @@
       close: "Fechar", cancel: "Cancelar", credit_created: "feito com", credit_by: "por", support: "me apoiar",
       pdex_todo: "Faltando na Pokédex",
       pdex_caught: "capturado ✓", pdex_notcaught: "não capturado", pdex_progress: "{k}/{n} kills",
-      pdex_auto_tp: "Auto-teleporte", pdex_auto_pick: "Escolha automática",
+      pdex_auto_tp: "Auto-teleporte", pdex_auto_pick: "Escolha automática", pdex_skip_catch: "Pular captura",
       pdex_auto_tp_tip: "Quando um Pokémon é concluído (capturado + 100 kills), teleporta automaticamente para o próximo mais fácil.",
       pdex_auto_pick_tip: "A cada teleporte, invoca o melhor Pokémon da sua party para aquele alvo.",
+      pdex_skip_catch_tip: "O auto-teleporte segue em frente quando uma espécie atinge 100 kills, sem esperar para capturá-la.",
       pdex_empty: "Pokédex completa! Nada para caçar.",
       pdex_loading: "Carregando Pokédex…", pdex_load_fail: "Não foi possível carregar sua Pokédex. Confira se você está logado.",
       news_updated: "Atualizado para <b>v{v}</b>", news_whatsnew: "Novidades", wn_close: "Entendi", wn_generic: "Melhorias e correções.", wn_fixes: "Correções desde então",
@@ -826,20 +828,20 @@
       bar.innerHTML =
         '<div class="pr-opt pr-opt-multi">' +
           optUnit("pdexAutoTp", t("pdex_auto_tp"), pdexAutoTp, t("pdex_auto_tp_tip"), "l") +
-          optUnit("pdexAutoPick", t("pdex_auto_pick"), pdexAutoPick, t("pdex_auto_pick_tip"), "r") +
+          optUnit("pdexAutoPick", t("pdex_auto_pick"), pdexAutoPick, t("pdex_auto_pick_tip"), "c") +
+          optUnit("pdexSkipCatch", t("pdex_skip_catch"), pdexSkipCatch, t("pdex_skip_catch_tip"), "r") +
         '</div>';
       bar.querySelectorAll(".pr-switch[data-opt]").forEach(function (sw) {
         sw.addEventListener("click", function () {
           var key = sw.getAttribute("data-opt");
-          var val = !(key === "pdexAutoTp" ? pdexAutoTp : pdexAutoPick);
-          if (key === "pdexAutoTp") pdexAutoTp = val; else pdexAutoPick = val;
+          var val = !(key === "pdexAutoTp" ? pdexAutoTp : key === "pdexAutoPick" ? pdexAutoPick : pdexSkipCatch);
+          if (key === "pdexAutoTp") pdexAutoTp = val; else if (key === "pdexAutoPick") pdexAutoPick = val; else pdexSkipCatch = val;
           var o = {}; o[key] = val;
           // mutually exclusive with XP auto-level-up: enabling Pokedex auto-teleport turns that off
           if (key === "pdexAutoTp" && val && autoLevelUp) { autoLevelUp = false; o.autoLevelUp = false; }
           storeSet(o);
           sw.classList.toggle("on", val); sw.setAttribute("aria-checked", val ? "true" : "false");
           if (key === "pdexAutoTp") { if (val) loadAutoHelper(); pdexTermSet = val && pokedex ? terminalIds() : null; pdexActive = null; ensurePdexPoll(); }
-          // Hunt all only changes the auto-teleport scope, not the visible list — no re-render needed
         });
       });
       return;
@@ -1308,27 +1310,31 @@
     if (!engine || !pokedex) return [];
     return engine.pokedexPlan(pokedex).todo;
   }
+  // True when we should NOT wait around for a catch: the player explicitly enabled
+  // Skip catch, OR they physically can't catch right now (auto-catch off / no balls).
+  // Either way a capped species counts as done-enough and auto-teleport moves on.
+  function noCatchWait() { return pdexSkipCatch || catchBlocked(); }
+
   // species auto-teleport may move to: everything still ACTIONABLE (not terminal), in
-  // the SAME order as the displayed list (to-do by level+name, then Beyond if Hunt all)
-  // — so auto-teleport always goes to the first thing the user sees that still needs work.
-  // A capped-but-uncaught species the player CAN still catch stays in its list position.
-  // Terminal species (done, or capped & uncatchable) are excluded so we never bounce back.
+  // the SAME order as the displayed list (to-do by level+name) — so auto-teleport always
+  // goes to the first thing the user sees that still needs work. A capped-but-uncaught
+  // species the player CAN still catch (and isn't skipping) stays in its list position.
+  // Terminal species (done, or capped & we're not waiting for the catch) are excluded.
   function pdexTargets() {
-    var blocked = catchBlocked();
+    var noWait = noCatchWait();
     return pdexList().filter(function (it) {
       var capped = (it.kills || 0) >= (it.unlockKills || 100);
-      return !(capped && (it.caught || blocked));            // keep only non-terminal, keep order
+      return !(capped && (it.caught || noWait));             // keep only non-terminal, keep order
     });
   }
-  // pokeIds we should NOT keep sitting on: fully done (caught AND >= unlockKills), or
-  // at the kill cap but uncatchable (auto-catch off / out of the selected ball). The
-  // latter is the fix for getting stuck at 100 kills with no way to capture.
+  // pokeIds we should NOT keep sitting on: fully done (caught AND >= unlockKills), or at
+  // the kill cap when we're not waiting for the catch (Skip catch on, or can't catch).
   function terminalIds() {
     var set = {};
     if (pokedex) {
-      var u = pokedex.unlockKills || 100, blocked = catchBlocked();
+      var u = pokedex.unlockKills || 100, noWait = noCatchWait();
       pokedex.species.forEach(function (s) {
-        if ((s.kills || 0) >= u && (s.caught || blocked)) set[s.id] = true;
+        if ((s.kills || 0) >= u && (s.caught || noWait)) set[s.id] = true;
       });
     }
     return set;
