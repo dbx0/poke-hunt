@@ -63,7 +63,10 @@
           pt: "A lista da Pokédex agora inclui todas as espécies caçáveis que faltam, mesmo as que você ainda não começou." },
         { v: "0.8.3",
           en: "Fixed the XP tab's Auto level up and the Pokédex Auto-teleport fighting over where to send you — turning one on now turns the other off.",
-          pt: "Corrigido o conflito entre o Auto-level up da aba de XP e o Auto-teleporte da Pokédex, que disputavam para onde te enviar; ativar um agora desliga o outro." }
+          pt: "Corrigido o conflito entre o Auto-level up da aba de XP e o Auto-teleporte da Pokédex, que disputavam para onde te enviar; ativar um agora desliga o outro." },
+        { v: "0.8.4",
+          en: "Fixed Teleport sometimes sending you to the wrong hunt (e.g. Paras landing you on Squirtle) — it now matches the exact hunt in any game language.",
+          pt: "Corrigido o Teleporte às vezes te levar para a caça errada (ex.: Paras te jogando no Squirtle); agora ele acerta a caça exata em qualquer idioma do jogo." }
       ]
     }
   };
@@ -490,12 +493,21 @@
 
   // find the game's map marker for a hunt (title is a translated string
   // containing the hunt name, e.g. "Travel to Pidgeot" / "Viajar para Pidgeot")
-  function findMarker(name) {
-    var nn = norm(name);
+  // Match a map marker by hunt SLUG, using its language-independent `data-guide`
+  // attribute ("hunt-<slug>"). The old title match ("Viajar para <Name>") was both
+  // localized AND a substring test — "Paras" matched "viajar-PARA-Squirtle" and
+  // teleported to the wrong hunt. The slug is exact and locale-proof. Falls back to an
+  // exact match on the `.hunt-name` label only if a marker lacks the attribute.
+  function findMarker(slug, name) {
     var btns = document.querySelectorAll(".hunt-marker");
+    var want = norm("hunt" + (slug || ""));                    // data-guide is "hunt-<slug>"
     for (var i = 0; i < btns.length; i++) {
-      var title = btns[i].getAttribute("title") || "";
-      if (norm(title).indexOf(nn) !== -1) return btns[i];
+      if (norm(btns[i].getAttribute("data-guide") || "") === want) return btns[i];
+    }
+    var nn = norm(name);                                       // fallback: exact label match (no substring)
+    for (var j = 0; j < btns.length; j++) {
+      var hn = btns[j].querySelector(".hunt-name");
+      if (hn && norm(hn.textContent) === nn) return btns[j];
     }
     return null;
   }
@@ -523,7 +535,7 @@
     if (!document.querySelector(".map-area")) mapBtn.click();   // open the map
     await waitFor(function () { return document.querySelector(".map-area"); }, 3500);
     selectArea(area);                                           // switch region (markers re-render)
-    var marker = await waitFor(function () { return findMarker(name); }, 3500);
+    var marker = await waitFor(function () { return findMarker(slug, name); }, 3500);
     if (!marker) return { ok: false, error: "marker-not-found" };
     marker.click();
     close();                                                    // hand focus back to the game
