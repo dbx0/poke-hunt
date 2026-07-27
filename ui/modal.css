@@ -325,7 +325,8 @@
 .pr-foot .pr-heart { color: #a35bff; }
 .pr-foot .pr-link { color: #b98cff; font-weight: 400; text-decoration: none; }
 .pr-foot .pr-link:hover { text-decoration: underline; }
-.pr-foot .pr-ver { font-size: 9px; font-weight: 600; color: #5b556f; }
+.pr-foot .pr-ver { font-size: 9px; font-weight: 600; color: #5b556f; cursor: pointer; }
+.pr-foot .pr-ver:hover { color: #b98cff; }
 .pr-contribute { color: #d7bcff; font-weight: 800; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .pr-contribute:hover { color: #fff; }
 

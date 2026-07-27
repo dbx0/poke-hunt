@@ -706,7 +706,7 @@
           '<span class="pr-credit">' + t("credit_created") + ' <span class="pr-heart">♥︎</span> ' + t("credit_by") + ' ' +
             '<a class="pr-link" href="https://x.com/maldbx0" target="_blank" rel="noopener noreferrer">bx0</a>' +
             ' · <span class="pr-contribute" role="button" tabindex="0">' + t("support") + '</span></span>' +
-          '<span class="pr-ver"></span>' +
+          '<span class="pr-ver" role="button" tabindex="0" title="' + t("news_whatsnew") + '"></span>' +
         '</footer>' +
         '<div class="pr-tip" hidden></div>' +
       '</div>';
@@ -719,6 +719,9 @@
     var contrib = shadow.querySelector(".pr-contribute");
     contrib.addEventListener("click", contribute);
     contrib.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); contribute(); } });
+    var ver = shadow.querySelector(".pr-ver");
+    ver.addEventListener("click", showWhatsNew);
+    ver.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showWhatsNew(); } });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape" && isOpen()) close(); });
     document.body.appendChild(host);
   }
