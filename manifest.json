@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Poke Hunt",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "Calculate the best hunting routes on Poke Idle World",
   "browser_specific_settings": {
     "gecko": {
-      "id": "poke-hunt@maldbx0",
+      "id": "poke-hunt@dbx0.lol",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
         "required": ["none"]

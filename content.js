@@ -66,7 +66,10 @@
           pt: "Corrigido o conflito entre o Auto-level up da aba de XP e o Auto-teleporte da Pokédex, que disputavam para onde te enviar; ativar um agora desliga o outro." },
         { v: "0.8.4",
           en: "Fixed Teleport sometimes sending you to the wrong hunt.",
-          pt: "Corrigido o Teleporte às vezes te levar para a caça errada." }
+          pt: "Corrigido o Teleporte às vezes te levar para a caça errada." },
+        { v: "0.8.5",
+          en: "Best match now avoids tanky hunts that take many hits per kill, preferring a hunt that kills much faster when the XP/h is close.",
+          pt: "A melhor opção agora evita caças muito resistentes que levam vários hits por kill, preferindo uma que mata bem mais rápido quando o XP/h é parecido." }
       ]
     }
   };

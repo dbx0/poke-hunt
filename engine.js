@@ -291,23 +291,42 @@
       };
     }
 
+    // How close (in XP/h or $/h) another hunt must be to the leader to be considered a
+    // rival, and how much faster it must kill to be picked over the leader. The kph model
+    // over-credits tanky, high-hit targets (e.g. "17 hits/kill @ 128 kph") that in practice
+    // grind painfully slowly; when a rival is within HITS_BAND on the metric but needs far
+    // fewer hits, it's the better real pick. The FASTER gate means we only trade metric for
+    // a MEANINGFUL speed gain, so ordinary hunts (small hit differences) are untouched.
+    var HITS_BAND = 0.12;    // rival must be within 12% of the leader's metric
+    var HITS_FASTER = 0.6;   // ...and need <= 60% of the leader's hits (>= 40% fewer) to win
+
     // best hunt for a poke at a specific level (respecting unlock level), by metric
     function bestAt(poke, playerCreature, mods, metricKey) {
-      var best = null;
       var pStats = playerStats(poke, playerCreature);      // same for every hunt at this level
+      var cands = [];
       for (var i = 0; i < huntList.length; i++) {
         var hunt = huntList[i];
         if (hunt.minLevel > poke.level) continue;          // not unlocked yet
         var m = huntMetrics(hunt, poke, playerCreature, data, mods, pStats, true); // defer survivability
         if (m[metricKey] <= 0) continue;
-        if (best && m[metricKey] <= best.metrics[metricKey]) continue; // can't beat the leader
-        // new offensive leader: now pay for the survivability check
-        var sv = survivability(hunt, playerCreature, pStats, m.hits, data.typechart);
-        if (!sv.survivable) continue;                      // skip hunts you'd faint in
-        m.survivesHits = sv.survivesHits; m.survivable = true;
-        best = { hunt: hunt, metrics: m };
+        cands.push({ hunt: hunt, m: m });
       }
-      return best;
+      cands.sort(function (a, b) { return b.m[metricKey] - a.m[metricKey]; });
+      // walk from the top; the first survivable hunt is the leader (the old behavior),
+      // then look only within its band for a hunt that kills meaningfully faster.
+      var leader = null, fastest = null;
+      for (var j = 0; j < cands.length; j++) {
+        var c = cands[j];
+        if (leader && c.m[metricKey] < leader.m[metricKey] * (1 - HITS_BAND)) break;   // past the band
+        var sv = survivability(c.hunt, playerCreature, pStats, c.m.hits, data.typechart);
+        if (!sv.survivable) continue;                      // skip hunts you'd faint in
+        c.m.survivesHits = sv.survivesHits; c.m.survivable = true;
+        if (!leader) leader = c;                            // top survivable = default pick
+        if (!fastest || c.m.hits < fastest.m.hits) fastest = c;
+      }
+      if (!leader) return null;
+      var pick = (fastest && fastest.m.hits <= leader.m.hits * HITS_FASTER) ? fastest : leader;
+      return { hunt: pick.hunt, metrics: pick.m };
     }
 
     function step(hunt, m) {
