@@ -118,7 +118,11 @@
       var ms = FIRST_HIT_MS + Math.max(0, Math.ceil(h) - 1) * ATTACK_INTERVAL_MS;
       return 3600 / (ms / 1000);
     }
-    if (h >= 8) return tbl.hit8 * (8 / h);           // extrapolate downward
+    // Beyond the measured table (max 8 hits), throughput falls FASTER than linear:
+    // slow, tanky kills add fixed overhead (healing, retargeting) the table never saw.
+    // A quadratic falloff matches measured reality (e.g. Hitmontop ~13 hits -> ~103 kph,
+    // vs the old linear estimate of ~174). Continuous at h=8 (factor 1).
+    if (h >= 8) return tbl.hit8 * Math.pow(8 / h, 2);
     var lo = Math.floor(h), hi = Math.ceil(h);
     var vlo = tbl["hit" + lo], vhi = tbl["hit" + hi];
     if (vlo === undefined) return tbl.hit8;

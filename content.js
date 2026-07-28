@@ -588,6 +588,19 @@
     if (!name || !level) return null;
     var poke = { name: name.trim(), level: level, type: type };
     var ws = wsPokes.get(norm(poke.name) + "@" + level);
+    // Level just changed (DOM updates before the next WS snapshot): the exact name@level
+    // key misses, so fall back to the same species' nearest-level cached stats. Slightly
+    // stale live stats beat the level-derived estimate (which over-credits damage).
+    if (!ws && ownedPokes && ownedPokes.length) {
+      var best = null, bestDiff = Infinity;
+      for (var i = 0; i < ownedPokes.length; i++) {
+        var op = ownedPokes[i];
+        if (!op.stats || norm(op.name) !== norm(poke.name)) continue;
+        var diff = Math.abs((op.level || 0) - level);
+        if (diff < bestDiff) { bestDiff = diff; best = op; }
+      }
+      if (best) ws = { pokeId: best.pokeId, stats: best.stats };
+    }
     if (ws) { poke.pokeId = ws.pokeId; poke.stats = ws.stats; poke.live = !!ws.stats; }
     return poke;
   }
