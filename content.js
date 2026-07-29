@@ -69,7 +69,10 @@
           pt: "Corrigido o Teleporte às vezes te levar para a caça errada." },
         { v: "0.8.5",
           en: "Best match now avoids tanky hunts that take many hits per kill, preferring a hunt that kills much faster when the XP/h is close.",
-          pt: "A melhor opção agora evita caças muito resistentes que levam vários hits por kill, preferindo uma que mata bem mais rápido quando o XP/h é parecido." }
+          pt: "A melhor opção agora evita caças muito resistentes que levam vários hits por kill, preferindo uma que mata bem mais rápido quando o XP/h é parecido." },
+        { v: "0.8.6",
+          en: "Best match now accounts for auto-potion healing and keeps the leveling plan consistent as you level up.",
+          pt: "A melhor opção agora considera a cura da autopoção e mantém o plano de evolução consistente conforme você sobe de nível." }
       ]
     }
   };
@@ -406,6 +409,20 @@
     return !!until && until > Date.now();
   }
 
+  // auto-potion sustain, from /api/game/auto-helper: when it's on and you own potions,
+  // pass the effective heal-per-use (the selected potion, else your strongest owned one)
+  // and the HP threshold it fires at, so survivability accounts for healing.
+  function healMod() {
+    var h = autoHelper;
+    if (!h || h.autoPotion === false) return null;
+    var potions = (h.potions || []).filter(function (p) { return p && (p.quantity || 0) > 0 && (p.healAmount || 0) > 0; });
+    if (!potions.length) return null;
+    var amount = 0, sel = h.autoPotionItemId;
+    if (sel) { var m = potions.filter(function (p) { return p.id === sel; })[0]; if (m) amount = m.healAmount; }
+    if (!amount) amount = Math.max.apply(null, potions.map(function (p) { return p.healAmount; }));  // strongest owned
+    return { on: true, amount: amount, threshold: (h.autoPotionThreshold || 75) / 100 };
+  }
+
   function activeMods() {
     return {
       vip: vipOverride == null ? account.vip : vipOverride,
@@ -415,7 +432,8 @@
       lootBoost: boostActive("loot"),     // +50% loot value
       profession: account.profession,     // "prestige" -> Trainer Bonus
       professionRank: account.professionRank,
-      trainerLevel: account.trainerLevel
+      trainerLevel: account.trainerLevel,
+      heal: healMod()                     // auto-potion survivability
     };
   }
 
@@ -1298,7 +1316,7 @@
     if (!contextAlive()) return;
     fetch("/api/game/auto-helper", { credentials: "include", headers: authHeaders() })
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (j) { autoHelper = j; })
+      .then(function (j) { autoHelper = j; if (isOpen() && (currentTab === "xp" || currentTab === "loot")) render(); })
       .catch(function () { /* transient — keep the last known value */ });
   }
   // true when the player cannot be catching right now: auto-catch off, or no balls
@@ -1466,6 +1484,7 @@
     justUpdated = hasUpdate;                 // first open after an update -> show the news banner
     clearUpdateBadge();                      // opening the panel marks this version as seen
     if (!account.detected) loadAccount();   // last chance to pick up VIP/clan/trainer
+    loadAutoHelper();                        // refresh auto-potion state for survivability
     host.style.display = "block";
     render({ center: true });
     setTimeout(warmRoutes, 0);              // precompute the other tab's route off the critical path

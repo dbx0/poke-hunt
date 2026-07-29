@@ -186,13 +186,21 @@
   // swapped, wild enemy has no clan). Player total HP = hp stat * HP_TOTAL_MULT
   // (matches the game; enemies also get HP_HUNT_MULT). survivable = you outlast the
   // time it takes to kill one enemy. Split out so the hot path can defer it.
-  function survivability(hunt, playerCreature, pStats, hits, typechart) {
+  function survivability(hunt, playerCreature, pStats, hits, typechart, heal) {
     var c = hunt.creature;
     var eStats = hunt._eStats || enemyStats(c);
     var eDmg = bestMoveDamage(c, eStats, { type1: playerCreature.type1, type2: playerCreature.type2 },
                               pStats, c.huntLevel, typechart, 1);
     var playerHp = Math.max(1, pStats.hp * HP_TOTAL_MULT);
-    var survivesHits = eDmg > 0 ? playerHp / eDmg : Infinity;
+    if (eDmg <= 0) return { survivesHits: Infinity, survivable: true };
+    // Auto-potion: if a single potion out-heals one hit AND a hit from the heal-trigger
+    // point can't kill you, you sustain the hunt indefinitely — healing, not raw HP, is
+    // the real cap. This is why a frail poke (e.g. Gastly) can farm hard hitters all day.
+    if (heal && heal.on && heal.amount > 0) {
+      var trigger = playerHp * (heal.threshold || 0.75);   // HP at which the potion fires
+      if (heal.amount >= eDmg && eDmg < trigger) return { survivesHits: Infinity, survivable: true };
+    }
+    var survivesHits = playerHp / eDmg;
     return { survivesHits: survivesHits, survivable: survivesHits >= hits };
   }
 
@@ -207,7 +215,7 @@
     var hits = Math.max(1, eTotalHp / dmg);
     // survivability is the second-most expensive step; skip it on the hot bestAt scan
     // (computed there only for the running leader) but keep it for direct callers.
-    var sv = skipSurvive ? { survivesHits: Infinity, survivable: true } : survivability(hunt, playerCreature, pStats, hits, data.typechart);
+    var sv = skipSurvive ? { survivesHits: Infinity, survivable: true } : survivability(hunt, playerCreature, pStats, hits, data.typechart, mods.heal);
     var survivesHits = sv.survivesHits;
     var survivable = sv.survivable;
     var kph = killsPerHour(data.speeds, c.pokeId, hits);
@@ -261,6 +269,17 @@
       }
     });
 
+    // Project live stats to another level. Each stat is linear in level
+    // ((base+2*iv) * level/100 * quality^exp), so scaling by the level ratio preserves
+    // the Pokémon's real IVs/quality — far better than the generic level-derived estimate,
+    // and it keeps the leveling plan consistent with the live current-level pick.
+    function scaleStats(stats, fromLevel, toLevel) {
+      if (!stats || !stats.atk || !stats.spAtk || !fromLevel) return null;
+      var k = toLevel / fromLevel;
+      return { hp: stats.hp * k, atk: stats.atk * k, def: stats.def * k,
+               spAtk: stats.spAtk * k, spDef: stats.spDef * k, speed: stats.speed * k };
+    }
+
     function resolvePlayerCreature(poke) {
       if (poke.pokeId && byId.has(poke.pokeId)) return byId.get(poke.pokeId);
       return byName.get(normSlug(poke.name)) || null;
@@ -279,7 +298,8 @@
         opts.fromLevel == null ? "" : opts.fromLevel,
         opts.vip ? 1 : 0, opts.xpBoost ? 1 : 0, opts.lootBoost ? 1 : 0,
         opts.clan || "", opts.clanRank || 0,
-        opts.profession || "", opts.professionRank || 0, opts.trainerLevel || 0].join("|");
+        opts.profession || "", opts.professionRank || 0, opts.trainerLevel || 0,
+        (opts.heal && opts.heal.on ? opts.heal.amount + "@" + opts.heal.threshold : "0")].join("|");
     }
 
     // resolve account modifiers (vip, clan, boosts, prestige trainer bonus) for a poke
@@ -291,7 +311,8 @@
         clanMult: clanMultiplier(clans, opts.clan, opts.clanRank, playerCreature),
         profession: opts.profession || null,
         professionRank: opts.professionRank || 0,
-        trainerLevel: opts.trainerLevel || 0
+        trainerLevel: opts.trainerLevel || 0,
+        heal: opts.heal || null                     // auto-potion sustain (see survivability)
       };
     }
 
@@ -322,7 +343,7 @@
       for (var j = 0; j < cands.length; j++) {
         var c = cands[j];
         if (leader && c.m[metricKey] < leader.m[metricKey] * (1 - HITS_BAND)) break;   // past the band
-        var sv = survivability(c.hunt, playerCreature, pStats, c.m.hits, data.typechart);
+        var sv = survivability(c.hunt, playerCreature, pStats, c.m.hits, data.typechart, mods.heal);
         if (!sv.survivable) continue;                      // skip hunts you'd faint in
         c.m.survivesHits = sv.survivesHits; c.m.survivable = true;
         if (!leader) leader = c;                            // top survivable = default pick
@@ -365,7 +386,7 @@
       var steps = [];
       var cur = null;
       for (var lvl = floor; lvl <= cap; lvl++) {
-        var probe = { name: poke.name, level: lvl, pokeId: poke.pokeId, stats: lvl === poke.level ? poke.stats : null };
+        var probe = { name: poke.name, level: lvl, pokeId: poke.pokeId, stats: scaleStats(poke.stats, poke.level, lvl) };
         var b = bestAt(probe, playerCreature, mods, metricKey);
         if (!b) continue;
         if (cur && cur.slug === b.hunt.slug) {
@@ -404,7 +425,7 @@
       var upcoming = huntList
         .filter(function (h) { return h.minLevel > poke.level && !seen[h.slug]; })
         .map(function (h) {
-          var probe = { name: poke.name, level: h.minLevel, pokeId: poke.pokeId };
+          var probe = { name: poke.name, level: h.minLevel, pokeId: poke.pokeId, stats: scaleStats(poke.stats, poke.level, h.minLevel) };
           var m = huntMetrics(h, probe, playerCreature, data, mods);
           var st = step(h, m); st.minLevel = h.minLevel; return st;
         })
