@@ -615,6 +615,7 @@
     ".pr-hero{display:flex;align-items:center;gap:12px;margin:12px 12px 4px;padding:10px 12px;border-radius:12px;background:#100c1c;border:1px solid #241d38}.pr-hero:empty{display:none}" +
     ".pr-hero-ico{flex:0 0 auto;width:52px;height:52px;display:flex;align-items:center;justify-content:center;background:#000;border-radius:10px;border:1px solid #241d38}.pr-hero-ico .pr-ico{width:46px;height:46px}" +
     ".pr-hero-body{flex:1;min-width:0}.pr-hero-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.pr-hero-name{font-weight:800;font-size:16px;color:#fff}.pr-hero-lv{font-weight:700;font-size:12px;color:#b98cff}" +
+    ".pr-hero-stats{flex:0 0 auto;display:grid;grid-template-columns:auto auto auto auto;column-gap:7px;row-gap:2px;align-content:center;padding-left:10px;border-left:1px solid #241d38}.pr-hero-stats .pr-stat-l{font-size:9px;font-weight:800;text-transform:uppercase;color:#7c7397;align-self:center}.pr-hero-stats .pr-stat-v{font-size:12px;font-weight:800;color:#e8e2f5;text-align:right}" +
     ".pr-hero-types{display:flex;gap:6px;margin-top:5px}.pr-type{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:6px;color:#cfc6e6;background:#ffffff0f;border:1px solid #ffffff14}" +
     ".pr-type-normal{color:#d7dbe0;background:#9099a133;border-color:#9099a1aa}.pr-type-fire{color:#ffc39a;background:#ff9d5526;border-color:#ff9d55aa}.pr-type-water{color:#9fc4ef;background:#4d90d526;border-color:#4d90d5aa}.pr-type-electric{color:#f6e28a;background:#f4d23c26;border-color:#f4d23caa}.pr-type-grass{color:#a3e39c;background:#63bc5a26;border-color:#63bc5aaa}.pr-type-ice{color:#b6ece4;background:#73cec026;border-color:#73cec0aa}.pr-type-fighting{color:#ef9aad;background:#ce406926;border-color:#ce4069aa}.pr-type-poison{color:#d8b0ec;background:#ab6ac826;border-color:#ab6ac8aa}.pr-type-ground{color:#f0b48f;background:#d9784526;border-color:#d97845aa}.pr-type-flying{color:#c3d2f2;background:#8fa9de26;border-color:#8fa9deaa}.pr-type-psychic{color:#ffb0b3;background:#f9717626;border-color:#f97176aa}.pr-type-bug{color:#cbe388;background:#90c12c26;border-color:#90c12caa}.pr-type-rock{color:#ded1af;background:#c7b78b26;border-color:#c7b78baa}.pr-type-ghost{color:#a9b7ff;background:#5269ad33;border-color:#5269adcc}.pr-type-dragon{color:#86baef;background:#0b6dc326;border-color:#0b6dc3aa}.pr-type-dark{color:#b6b0c4;background:#59576133;border-color:#595761dd}.pr-type-steel{color:#a7cdda;background:#5a8ea126;border-color:#5a8ea1aa}.pr-type-fairy{color:#f6bdf1;background:#ec8fe626;border-color:#ec8fe6aa}" +
     ".pr-tabs{display:flex;gap:6px;padding:12px 12px 0;border-bottom:1px solid #2a2140}.pr-tab{position:relative;cursor:pointer;flex:1;text-align:center;padding:10px;font-size:13px;font-weight:700;color:#9a90b8;background:none;border:none;transition:color .18s ease}" +
@@ -915,6 +916,18 @@
       ' R' + mods.clanRank + ' +' + Math.round((route.clanMult - 1) * 100) + '%</span>');
     if (currentTab === "xp" && route.trainerBonusPct > 0) flags.push('<span class="pr-flag pr-flag-trainer">' +
       t("flag_trainer", { n: route.trainerBonusPct }) + '</span>');
+    // stat block on the right of the hero card — only shown when we have the real
+    // live stats from the Pokémon (never for the level-derived estimate).
+    var ps = p.liveStats ? p.stats : null;
+    var statsHtml = "";
+    if (ps) {
+      var statCell = function (l, v) { return '<span class="pr-stat-l">' + l + '</span><span class="pr-stat-v">' + fmt(Math.round(v)) + '</span>'; };
+      statsHtml = '<div class="pr-hero-stats">' +
+        statCell("HP", ps.hpTotal) + statCell("Atk", ps.atk) +
+        statCell("Def", ps.def) + statCell("SpA", ps.spAtk) +
+        statCell("SpD", ps.spDef) + statCell("Spe", ps.speed) +
+      '</div>';
+    }
     hero.innerHTML =
       '<div class="pr-hero-ico">' + iconHtml({ spritePokeId: p.spritePokeId, pokeId: p.pokeId }) + '</div>' +
       '<div class="pr-hero-body">' +
@@ -922,7 +935,8 @@
           '<span class="pr-hero-lv">Lv.' + poke.level + '</span></div>' +
         '<div class="pr-hero-types">' + typeChips + '</div>' +
         (flags.length ? '<div class="pr-badges">' + flags.join("") + '</div>' : '') +
-      '</div>';
+      '</div>' +
+      statsHtml;
 
     if (route.error) { body.innerHTML = '<div class="pr-empty">' + t("err_no_match", { name: esc(poke.name) }) + '</div>'; lastPokeKey = pokeKey(poke); return; }
 

@@ -414,7 +414,10 @@
       var result = { species: playerCreature.name, level: poke.level, metric: opts.metric === "loot" ? "loot" : "xp",
                player: { pokeId: playerCreature.pokeId, looktype: playerCreature.looktype,
                          spritePokeId: (playerCreature.looktype != null && looktypeToBase[playerCreature.looktype]) || playerCreature.pokeId,
-                         type1: playerCreature.type1, type2: playerCreature.type2, rarity: playerCreature.rarity },
+                         type1: playerCreature.type1, type2: playerCreature.type2, rarity: playerCreature.rarity,
+                         // the exact stats the estimate uses; hpTotal is the real HP number (stat x12).
+                         stats: (function () { var s = playerStats(poke, playerCreature); return { hpTotal: s.hp * HP_TOTAL_MULT, atk: s.atk, def: s.def, spAtk: s.spAtk, spDef: s.spDef, speed: s.speed }; })(),
+                         liveStats: !!(poke.stats && poke.stats.atk && poke.stats.spAtk) },
                vip: mods.vip, xpBoost: mods.xpBoost, lootBoost: mods.lootBoost,
                clanMult: mods.clanMult,
                trainerBonusPct: Math.round(trainerBonusFraction(mods, poke.level) * 100),

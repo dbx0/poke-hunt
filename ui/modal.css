@@ -47,6 +47,13 @@
 }
 .pr-hero-ico .pr-ico { width: 46px; height: 46px; }
 .pr-hero-body { flex: 1 1 auto; min-width: 0; }
+.pr-hero-stats {
+  flex: 0 0 auto; display: grid; grid-template-columns: auto auto auto auto;
+  column-gap: 7px; row-gap: 2px; align-content: center; padding-left: 10px; margin-left: 2px;
+  border-left: 1px solid #241d38;
+}
+.pr-hero-stats .pr-stat-l { font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #7c7397; align-self: center; }
+.pr-hero-stats .pr-stat-v { font-size: 12px; font-weight: 800; color: #e8e2f5; text-align: right; font-variant-numeric: tabular-nums; }
 .pr-hero-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .pr-hero-name { font-weight: 800; font-size: 16px; color: #fff; }
 .pr-hero-lv { font-weight: 700; font-size: 12px; color: #b98cff; }
