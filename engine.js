@@ -27,6 +27,7 @@
   var HP_HUNT_MULT = 5;
   var OC = 60, TC = 2;                // damage denominator scale, multiplier
   var FIRST_HIT_MS = 500, ATTACK_INTERVAL_MS = 1600;
+  var SPAWN_FLOOR_MS = 5000;          // realistic min time/kill (spawn+travel) when no measured productivity exists
 
   function statAt(base, iv, level, quality, expIdx) {
     return Math.round((base + IV_MULT * iv) * (level / 100) * Math.pow(quality, EXP[expIdx]));
@@ -114,8 +115,10 @@
     var tbl = speeds[String(pokeId)];
     var h = Math.max(1, hits);
     if (!tbl) {
-      // fallback: pure combat cadence when no productivity data exists
-      var ms = FIRST_HIT_MS + Math.max(0, Math.ceil(h) - 1) * ATTACK_INTERVAL_MS;
+      // No measured productivity (e.g. new Orre/Gen-3 creatures piwtools never covered):
+      // estimate from combat cadence, floored by a realistic per-kill minimum so a near
+      // one-shot can't imply absurd kph (the measured tables bottom out around ~5s/kill).
+      var ms = Math.max(SPAWN_FLOOR_MS, FIRST_HIT_MS + Math.max(0, Math.ceil(h) - 1) * ATTACK_INTERVAL_MS);
       return 3600 / (ms / 1000);
     }
     // Beyond the measured table (max 8 hits), throughput falls FASTER than linear:
@@ -160,8 +163,10 @@
       var c = byName.get(key) || byName.get(HUNT_ALIAS[key] || "");
       if (!c) return;                              // towns / unmatched: skip
       if (!(c.attacks && c.attacks.length) || !(c.huntLevel > 0)) return; // not huntable
-      if (speeds && !speeds[String(c.pokeId)]) return; // no productivity data -> skip
-      out.push({ slug: h.slug, name: h.name || c.name, area: h.area, minLevel: h.level || c.huntLevel, creature: c });
+      // creatures with no measured productivity still get listed — killsPerHour estimates
+      // from combat cadence (floored). `estimated` flags rows the UI can mark as rough.
+      out.push({ slug: h.slug, name: h.name || c.name, area: h.area, minLevel: h.level || c.huntLevel,
+                 creature: c, estimated: !(speeds && speeds[String(c.pokeId)]) });
     });
     return out;
   }

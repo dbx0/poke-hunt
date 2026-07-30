@@ -47,6 +47,16 @@
   // release (0.8.1, 0.8.2, …) appends a one-liner to `fixes`, shown smaller below the
   // feature. The next feature bump (0.9.0) adds a fresh entry, resetting the fix list.
   var CHANGELOG = {
+    "0.9.0": {
+      en: { title: "New Pokémon: Gen 2 & 3 (Orre)", points: [
+        "Hunt routes and the Pokédex now include the new Gen-3 Orre region and every newly-huntable Gen-2 species — 144 more Pokémon.",
+        "More accurate damage: moves now use the correct Physical/Special stat.",
+        "New species without measured farm data still get listed, with a conservative XP/h estimate." ] },
+      pt: { title: "Novos Pokémon: Gen 2 e 3 (Orre)", points: [
+        "As rotas de caça e a Pokédex agora incluem a nova região Orre (Gen 3) e todas as espécies de Gen 2 recém-caçáveis — 144 Pokémon a mais.",
+        "Dano mais preciso: os golpes agora usam o status Físico/Especial correto.",
+        "Espécies novas sem dados de farm medidos ainda aparecem, com uma estimativa conservadora de XP/h." ] }
+    },
     "0.8.0": {
       en: { title: "Pokédex tab", points: [
         "A new tab lists every huntable Pokémon you still need to finish for the Pokédex (100 kills and a capture), sorted from easiest to hardest, each with a one-click teleport.",
@@ -226,6 +236,8 @@
   var toastShown = {};
   function onEnteredHunt(slug, name, area) {
     if (!slug) return;
+    autoSlug = slug;                     // keep auto-level-up in sync with the hunt you're actually in,
+                                         // so it never re-teleports to a hunt you already entered (map/manual/pokedex)
     var wasFav = isFavorite(slug);
     recordTeleport(slug, name, area);
     if (Date.now() >= suppressToastUntil && !wasFav && !toastShown[slug]) { toastShown[slug] = true; showFavToast({ slug: slug, name: name, area: area }); }

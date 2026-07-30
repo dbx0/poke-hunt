@@ -16,7 +16,7 @@ import { bundleSprites } from "./bundle-sprites.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const GAME = "https://poke.idleworld.online";
-const PIW = "https://piwtools.vercel.app";
+const PIW = "https://piwtools.com.br";
 const dataPath = (f) => join(root, "data", f);
 const writeJson = (f, obj) => writeFileSync(dataPath(f), JSON.stringify(obj));
 
@@ -75,23 +75,26 @@ async function main() {
   console.log("hunts.json     <- /api/game/map-markers (" + hunts.length + ")");
 
   // --- PIW calculator bundle (productivity table + type chart + clans) ---
-  const page = await getText(PIW + "/calculator");
-  const asset = (page.match(/\/assets\/index-[A-Za-z0-9_]+\.js/) || [])[0];
-  if (!asset) throw new Error("could not find PIW bundle in /calculator");
-  const bundle = await getText(PIW + asset);
-  console.log("PIW bundle     <- " + asset);
-
-  const speeds = extractSpeeds(bundle);
-  writeJson("speeds.json", speeds);
-  console.log("speeds.json    <- productivity table (" + Object.keys(speeds).length + " creatures)");
-
-  const typechart = extractTypechart(bundle);
-  writeJson("typechart.json", typechart);
-  console.log("typechart.json <- type chart (" + Object.keys(typechart).length + " types)");
-
-  const clans = extractClans(bundle);
-  writeJson("clans.json", clans);
-  console.log("clans.json     <- clan roster (" + clans.length + " clans)");
+  // piwtools is a third party and has gone unreliable/stale. If it can't be reached or
+  // parsed, KEEP the existing bundled speeds/typechart/clans instead of crashing the
+  // whole refresh — the game-authoritative data above is what matters most.
+  let piwBundle = "kept-existing";
+  try {
+    const page = await getText(PIW + "/calculator");
+    const asset = (page.match(/\/assets\/index-[A-Za-z0-9_]+\.js/) || [])[0];
+    if (!asset) throw new Error("no bundle in /calculator");
+    const bundle = await getText(PIW + asset);
+    piwBundle = asset;
+    console.log("PIW bundle     <- " + asset);
+    const speeds = extractSpeeds(bundle);
+    writeJson("speeds.json", speeds);
+    console.log("speeds.json    <- productivity table (" + Object.keys(speeds).length + " creatures)");
+    writeJson("typechart.json", extractTypechart(bundle));
+    writeJson("clans.json", extractClans(bundle));
+    console.log("typechart.json + clans.json updated from PIW");
+  } catch (e) {
+    console.log("PIW unavailable (" + e.message + ") — keeping existing speeds/typechart/clans");
+  }
 
   // --- sprites (download any new ids) ---
   console.log("");
@@ -102,7 +105,7 @@ async function main() {
   const hash = createHash("sha256");
   for (const f of files) hash.update(readFileSync(dataPath(f)));
   const version = hash.digest("hex").slice(0, 8);
-  const meta = { version: version, updatedAt: new Date().toISOString().slice(0, 10), piwBundle: asset };
+  const meta = { version: version, updatedAt: new Date().toISOString().slice(0, 10), piwBundle: piwBundle };
   writeJson("meta.json", meta);
   console.log("\nmeta.json      -> version " + version + " (" + meta.updatedAt + ")");
   console.log("\nDone. If the version changed, bump manifest.json and reload the extension.");
