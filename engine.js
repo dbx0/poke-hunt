@@ -28,6 +28,7 @@
   var OC = 60, TC = 2;                // damage denominator scale, multiplier
   var FIRST_HIT_MS = 500, ATTACK_INTERVAL_MS = 1600;
   var SPAWN_FLOOR_MS = 5000;          // realistic min time/kill (spawn+travel) when no measured productivity exists
+  var SAFE_MIN_SURVIVES = 25;         // "safe hunt": enemy dmg must be <= ~1/25 (~4%) of your HP per hit
 
   function statAt(base, iv, level, quality, expIdx) {
     return Math.round((base + IV_MULT * iv) * (level / 100) * Math.pow(quality, EXP[expIdx]));
@@ -191,13 +192,19 @@
   // swapped, wild enemy has no clan). Player total HP = hp stat * HP_TOTAL_MULT
   // (matches the game; enemies also get HP_HUNT_MULT). survivable = you outlast the
   // time it takes to kill one enemy. Split out so the hot path can defer it.
-  function survivability(hunt, playerCreature, pStats, hits, typechart, heal) {
+  function survivability(hunt, playerCreature, pStats, hits, typechart, heal, safe) {
     var c = hunt.creature;
     var eStats = hunt._eStats || enemyStats(c);
     var eDmg = bestMoveDamage(c, eStats, { type1: playerCreature.type1, type2: playerCreature.type2 },
                               pStats, c.huntLevel, typechart, 1);
     var playerHp = Math.max(1, pStats.hp * HP_TOTAL_MULT);
     if (eDmg <= 0) return { survivesHits: Infinity, survivable: true };
+    var survivesHits = playerHp / eDmg;
+    // Safe mode: only hunts where the enemy barely dents you (survive many hits). This
+    // is the user-facing "safe hunt" filter, and it also guards against multi-enemy group
+    // hunts (Outland/Orre) we can't measure — those hit far too hard to clear this bar.
+    // Ignores potions on purpose: "safe" means low incoming damage, not heal-sustained.
+    if (safe) return { survivesHits: survivesHits, survivable: survivesHits >= SAFE_MIN_SURVIVES };
     // Auto-potion: if a single potion out-heals one hit AND a hit from the heal-trigger
     // point can't kill you, you sustain the hunt indefinitely — healing, not raw HP, is
     // the real cap. This is why a frail poke (e.g. Gastly) can farm hard hitters all day.
@@ -205,7 +212,6 @@
       var trigger = playerHp * (heal.threshold || 0.75);   // HP at which the potion fires
       if (heal.amount >= eDmg && eDmg < trigger) return { survivesHits: Infinity, survivable: true };
     }
-    var survivesHits = playerHp / eDmg;
     return { survivesHits: survivesHits, survivable: survivesHits >= hits };
   }
 
@@ -220,7 +226,7 @@
     var hits = Math.max(1, eTotalHp / dmg);
     // survivability is the second-most expensive step; skip it on the hot bestAt scan
     // (computed there only for the running leader) but keep it for direct callers.
-    var sv = skipSurvive ? { survivesHits: Infinity, survivable: true } : survivability(hunt, playerCreature, pStats, hits, data.typechart, mods.heal);
+    var sv = skipSurvive ? { survivesHits: Infinity, survivable: true } : survivability(hunt, playerCreature, pStats, hits, data.typechart, mods.heal, mods.safe);
     var survivesHits = sv.survivesHits;
     var survivable = sv.survivable;
     var kph = killsPerHour(data.speeds, c.pokeId, hits);
@@ -304,7 +310,8 @@
         opts.vip ? 1 : 0, opts.xpBoost ? 1 : 0, opts.lootBoost ? 1 : 0,
         opts.clan || "", opts.clanRank || 0,
         opts.profession || "", opts.professionRank || 0, opts.trainerLevel || 0,
-        (opts.heal && opts.heal.on ? opts.heal.amount + "@" + opts.heal.threshold : "0")].join("|");
+        (opts.heal && opts.heal.on ? opts.heal.amount + "@" + opts.heal.threshold : "0"),
+        opts.safe ? "safe" : ""].join("|");
     }
 
     // resolve account modifiers (vip, clan, boosts, prestige trainer bonus) for a poke
@@ -317,7 +324,8 @@
         profession: opts.profession || null,
         professionRank: opts.professionRank || 0,
         trainerLevel: opts.trainerLevel || 0,
-        heal: opts.heal || null                     // auto-potion sustain (see survivability)
+        heal: opts.heal || null,                    // auto-potion sustain (see survivability)
+        safe: !!opts.safe                           // "safe hunt" filter (see survivability)
       };
     }
 
@@ -348,7 +356,7 @@
       for (var j = 0; j < cands.length; j++) {
         var c = cands[j];
         if (leader && c.m[metricKey] < leader.m[metricKey] * (1 - HITS_BAND)) break;   // past the band
-        var sv = survivability(c.hunt, playerCreature, pStats, c.m.hits, data.typechart, mods.heal);
+        var sv = survivability(c.hunt, playerCreature, pStats, c.m.hits, data.typechart, mods.heal, mods.safe);
         if (!sv.survivable) continue;                      // skip hunts you'd faint in
         c.m.survivesHits = sv.survivesHits; c.m.survivable = true;
         if (!leader) leader = c;                            // top survivable = default pick

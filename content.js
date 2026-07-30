@@ -24,6 +24,7 @@
 
   // ---------- Auto level up ----------
   var autoLevelUp = false;                 // when on, auto-teleport as the plan's band changes
+  var xpSafeHunt = false;                  // when on, only recommend hunts where the enemy barely hurts you
   var autoSpecies = null, autoLevel = null, autoSlug = null; // tracking for the active poke
   var autoTeleporting = false;             // in-flight guard so we don't stack teleports
   var suppressToastUntil = 0;              // skip the favorite toast for auto teleports
@@ -49,13 +50,18 @@
   var CHANGELOG = {
     "0.9.0": {
       en: { title: "New Pokémon: Gen 2 & 3 (Orre)", points: [
-        "Hunt routes and the Pokédex now include the new Gen-3 Orre region and every newly-huntable Gen-2 species — 144 more Pokémon.",
+        "Hunt routes and the Pokédex now include the new Gen-3 Orre region and every newly-huntable Gen-2 species, 144 more Pokémon.",
         "More accurate damage: moves now use the correct Physical/Special stat.",
         "New species without measured farm data still get listed, with a conservative XP/h estimate." ] },
       pt: { title: "Novos Pokémon: Gen 2 e 3 (Orre)", points: [
-        "As rotas de caça e a Pokédex agora incluem a nova região Orre (Gen 3) e todas as espécies de Gen 2 recém-caçáveis — 144 Pokémon a mais.",
+        "As rotas de caça e a Pokédex agora incluem a nova região Orre (Gen 3) e todas as espécies de Gen 2 recém-caçáveis, 144 Pokémon a mais.",
         "Dano mais preciso: os golpes agora usam o status Físico/Especial correto.",
-        "Espécies novas sem dados de farm medidos ainda aparecem, com uma estimativa conservadora de XP/h." ] }
+        "Espécies novas sem dados de farm medidos ainda aparecem, com uma estimativa conservadora de XP/h." ] },
+      fixes: [
+        { v: "0.9.1",
+          en: "New 'Safe hunt' switch in the XP tab: only suggests hunts where enemies barely hurt you, avoiding spots that kill you fast.",
+          pt: "Novo botão 'Caça segura' na aba de XP: só sugere caças onde os inimigos quase não te machucam, evitando lugares que te matam rápido." }
+      ]
     },
     "0.8.0": {
       en: { title: "Pokédex tab", points: [
@@ -72,7 +78,7 @@
           en: "The Pokédex list now includes every huntable species you still need, even ones you haven't started yet.",
           pt: "A lista da Pokédex agora inclui todas as espécies caçáveis que faltam, mesmo as que você ainda não começou." },
         { v: "0.8.3",
-          en: "Fixed the XP tab's Auto level up and the Pokédex Auto-teleport fighting over where to send you — turning one on now turns the other off.",
+          en: "Fixed the XP tab's Auto level up and the Pokédex Auto-teleport fighting over where to send you. Turning one on now turns the other off.",
           pt: "Corrigido o conflito entre o Auto-level up da aba de XP e o Auto-teleporte da Pokédex, que disputavam para onde te enviar; ativar um agora desliga o outro." },
         { v: "0.8.4",
           en: "Fixed Teleport sometimes sending you to the wrong hunt.",
@@ -106,10 +112,10 @@
   function storeGet(keys) { return new Promise(function (res) { try { chrome.storage.local.get(keys, function (v) { res(v || {}); }); } catch (e) { res({}); } }); }
   function storeSet(obj) { try { chrome.storage.local.set(obj); } catch (e) {} }
   async function loadPlaces() {
-    var v = await storeGet(["favorites", "recent", "autoLevelUp", "pdexAutoTp", "pdexAutoPick", "pdexSkipCatch", "seenVersion"]);
+    var v = await storeGet(["favorites", "recent", "autoLevelUp", "xpSafeHunt", "pdexAutoTp", "pdexAutoPick", "pdexSkipCatch", "seenVersion"]);
     places.favorites = Array.isArray(v.favorites) ? v.favorites : [];
     places.recent = Array.isArray(v.recent) ? v.recent : [];
-    autoLevelUp = !!v.autoLevelUp;
+    autoLevelUp = !!v.autoLevelUp; xpSafeHunt = !!v.xpSafeHunt;
     pdexAutoTp = !!v.pdexAutoTp; pdexAutoPick = !!v.pdexAutoPick; pdexSkipCatch = !!v.pdexSkipCatch;
     // the two auto-teleport modes are mutually exclusive; a legacy state with both on
     // makes them fight over where to send the player. Keep Pokedex mode, drop XP auto-level.
@@ -272,6 +278,8 @@
       news_updated: "Updated to <b>v{v}</b>", news_whatsnew: "What's new", wn_close: "Got it", wn_generic: "Improvements and fixes.", wn_fixes: "Fixes since then",
       auto_label: "Auto level up",
       auto_tip: "Auto-teleports to the next best XP hunt as your Pokémon levels up.",
+      safe_label: "Safe hunt",
+      safe_tip: "Only suggests hunts where the enemy barely dents you. Avoids spots that hit hard (like group hunts) even if the XP looks great.",
       cd_section: "Teleporting to next best match",
       sec_best: "Best match", sec_plan: "Leveling plan", sec_higher: "Higher-level hunts", recent: "Recent",
       empty_no_poke: "No active Pokemon found. Open the game with a party selected.",
@@ -307,6 +315,8 @@
       news_updated: "Atualizado para <b>v{v}</b>", news_whatsnew: "Novidades", wn_close: "Entendi", wn_generic: "Melhorias e correções.", wn_fixes: "Correções desde então",
       auto_label: "Auto level up",
       auto_tip: "Teleporta automaticamente para o melhor hunt de XP conforme seu Pokémon sobe de level.",
+      safe_label: "Caça segura",
+      safe_tip: "Só sugere caças onde o inimigo quase não te machuca. Evita lugares que batem forte (como caças em grupo) mesmo que o XP pareça ótimo.",
       cd_section: "Teleportando para a próxima melhor escolha",
       sec_best: "Melhor escolha", sec_plan: "Rota para level up", sec_higher: "Hunts de level superior", recent: "Recentes",
       empty_no_poke: "Nenhum Pokémon ativo encontrado. Abra o jogo com uma equipe selecionada.",
@@ -445,7 +455,8 @@
       profession: account.profession,     // "prestige" -> Trainer Bonus
       professionRank: account.professionRank,
       trainerLevel: account.trainerLevel,
-      heal: healMod()                     // auto-potion survivability
+      heal: healMod(),                    // auto-potion survivability
+      safe: xpSafeHunt                    // "safe hunt": only low-incoming-damage hunts
     };
   }
 
@@ -694,7 +705,7 @@
     ".pr-wn-feature{font-size:18px;font-weight:800;color:#fff;margin-bottom:11px}" +
     ".pr-wn-list{margin:0 0 16px;padding-left:18px;color:#cfc6e6;font-size:13px;line-height:1.6}.pr-wn-list li{margin-bottom:7px}" +
     ".pr-wn-close{cursor:pointer;display:block;width:100%;padding:10px;border-radius:11px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:#7b3ff2;border:1px solid #a35bff}.pr-wn-close:hover{background:#8f57ff}" +
-    ".pr-opt-unit{display:inline-flex;align-items:center;gap:6px}.pr-opt-multi{justify-content:space-between;gap:8px;flex-wrap:wrap}" +
+    ".pr-opt-unit{display:inline-flex;align-items:center;gap:6px}.pr-opt-multi{justify-content:space-between;gap:8px;flex-wrap:wrap}.pr-opt-left{justify-content:flex-start;gap:18px;flex-wrap:wrap}" +
     ".pr-tip-r .pr-opt-tipbox{left:auto;right:0}.pr-tip-c .pr-opt-tipbox{left:50%;transform:translateX(-50%)}" +
     ".pr-pdex-chip,.pr-pdex-kills{font-size:11px;font-weight:700;color:#8a829f}.pr-pdex-chip.pr-pdex-on,.pr-pdex-kills.pr-pdex-on{color:#63d873}" +
     ".pr-cd{width:min(380px,92vw)}" +
@@ -856,30 +867,43 @@
     if (!bar) return;
     if (currentTab === "xp") {
       bar.hidden = false;
-      bar.innerHTML = '<div class="pr-opt">' + optUnit("autoLevelUp", t("auto_label"), autoLevelUp, t("auto_tip"), "l") + '</div>';
-      var sw = bar.querySelector(".pr-switch");
-      sw.addEventListener("click", function () {
-        autoLevelUp = !autoLevelUp;
-        var patch = { autoLevelUp: autoLevelUp };
-        // mutually exclusive with Pokedex auto-teleport: enabling this turns that off
-        if (autoLevelUp && pdexAutoTp) {
-          pdexAutoTp = false; patch.pdexAutoTp = false;
-          pdexActive = null; pdexTermSet = null; ensurePdexPoll();   // stop the pokedex poll
-        }
-        storeSet(patch);
-        sw.classList.toggle("on", autoLevelUp);
-        sw.setAttribute("aria-checked", autoLevelUp ? "true" : "false");
-        if (autoLevelUp) { autoSlug = null; autoLevelTick(); }   // sync to current spot on enable
+      bar.innerHTML = '<div class="pr-opt pr-opt-left">' +
+        optUnit("autoLevelUp", t("auto_label"), autoLevelUp, t("auto_tip"), "l") +
+        optUnit("xpSafeHunt", t("safe_label"), xpSafeHunt, t("safe_tip"), "l") +
+      '</div>';
+      bar.querySelectorAll(".pr-switch[data-opt]").forEach(function (sw) {
+        sw.addEventListener("click", function () {
+          var key = sw.getAttribute("data-opt");
+          if (key === "autoLevelUp") {
+            autoLevelUp = !autoLevelUp;
+            var patch = { autoLevelUp: autoLevelUp };
+            // mutually exclusive with Pokedex auto-teleport: enabling this turns that off
+            if (autoLevelUp && pdexAutoTp) {
+              pdexAutoTp = false; patch.pdexAutoTp = false;
+              pdexActive = null; pdexTermSet = null; ensurePdexPoll();
+            }
+            storeSet(patch);
+            sw.classList.toggle("on", autoLevelUp);
+            sw.setAttribute("aria-checked", autoLevelUp ? "true" : "false");
+            if (autoLevelUp) { autoSlug = null; autoLevelTick(); }
+          } else {                                   // xpSafeHunt
+            xpSafeHunt = !xpSafeHunt;
+            storeSet({ xpSafeHunt: xpSafeHunt });
+            sw.classList.toggle("on", xpSafeHunt);
+            sw.setAttribute("aria-checked", xpSafeHunt ? "true" : "false");
+            render();                                // re-rank with the safe filter
+          }
+        });
       });
       return;
     }
     if (currentTab === "pokedex") {
       bar.hidden = false;
       bar.innerHTML =
-        '<div class="pr-opt pr-opt-multi">' +
+        '<div class="pr-opt pr-opt-left">' +
           optUnit("pdexAutoTp", t("pdex_auto_tp"), pdexAutoTp, t("pdex_auto_tp_tip"), "l") +
-          optUnit("pdexAutoPick", t("pdex_auto_pick"), pdexAutoPick, t("pdex_auto_pick_tip"), "c") +
-          optUnit("pdexSkipCatch", t("pdex_skip_catch"), pdexSkipCatch, t("pdex_skip_catch_tip"), "r") +
+          optUnit("pdexAutoPick", t("pdex_auto_pick"), pdexAutoPick, t("pdex_auto_pick_tip"), "l") +
+          optUnit("pdexSkipCatch", t("pdex_skip_catch"), pdexSkipCatch, t("pdex_skip_catch_tip"), "l") +
         '</div>';
       bar.querySelectorAll(".pr-switch[data-opt]").forEach(function (sw) {
         sw.addEventListener("click", function () {
